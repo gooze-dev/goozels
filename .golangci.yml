@@ -1,0 +1,107 @@
+---
+version: '2'
+run:
+  timeout: 5m
+  tests: false
+  allow-parallel-runners: true
+
+linters:
+  disable:
+  - depguard
+  - exhaustruct
+  - gochecknoinits
+  - wsl
+  enable:
+  - revive
+  - staticcheck
+  - govet
+  - errcheck
+  - wsl_v5
+  - funlen
+  - ineffassign
+  - unused
+  - misspell
+  - unconvert
+  - unparam
+  - gocyclo
+  - gocognit
+  - dupl
+  - prealloc
+  - whitespace
+  - nolintlint
+  - asciicheck
+  - bidichk
+  - bodyclose
+  - canonicalheader
+  - containedctx
+  - contextcheck
+  - copyloopvar
+  - cyclop
+  - dogsled
+  - dupword
+  - durationcheck
+  - errname
+  - errorlint
+  - exhaustive
+  - fatcontext
+  - forcetypeassert
+  - goconst
+  - gocritic
+  - godot
+  - gocheckcompilerdirectives
+  - gosec
+  - grouper
+  - importas
+  - inamedparam
+  - interfacebloat
+  - intrange
+  - makezero
+  - mirror
+  - nakedret
+  - nestif
+  - nilerr
+  - nilnil
+  - noctx
+  - nosprintfhostport
+  - predeclared
+  - reassign
+  - sloglint
+  - tagalign
+  - thelper
+  - unconvert
+  - usestdlibvars
+  - wastedassign
+
+formatters:
+  enable:
+  - gofmt
+  - goimports
+
+linters-settings:
+  funlen:
+    lines: 50
+    statements: 30
+    ignore-comments: true
+  wsl_v5:
+    allow-first-in-block: true
+    allow-whole-block: false
+    branch-max-lines: 2
+  gocyclo:
+    min-complexity: 15
+  gocognit:
+    min-complexity: 20
+  dupl:
+    threshold: 100
+  misspell:
+    locale: US
+  cyclop:
+    max-complexity: 10
+
+issues:
+  exclude-use-default: false
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  exclude-files:
+  - .*_test\.go$
+  exclude-dirs:
+  - testdata
