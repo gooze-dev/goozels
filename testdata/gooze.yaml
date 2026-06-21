@@ -1,0 +1,13 @@
+output: .gooze-reports
+no-cache: false
+paths:
+  exclude:
+    - '^vendor/'
+    - '^mock_'
+run:
+  parallel: 4
+  mutation_timeout: 120
+log:
+  level: info
+  verbose: false
+  max_backups: 3

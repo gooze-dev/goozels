@@ -1,0 +1,49 @@
+{
+  "name": "goozels",
+  "displayName": "Goozels",
+  "description": "LSP support for gooze mutation testing: //gooze:ignore directives and gooze.yaml, layered on top of gopls.",
+  "version": "0.1.0",
+  "publisher": "gooze-dev",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters"
+  ],
+  "activationEvents": [
+    "onLanguage:go",
+    "workspaceContains:**/gooze.{yaml,yml}",
+    "workspaceContains:**/.gooze.{yaml,yml}"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "Goozels",
+      "properties": {
+        "goozels.path": {
+          "type": "string",
+          "default": "goozels",
+          "description": "Path to the goozels binary."
+        },
+        "goozels.gopls": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the gopls binary goozels should proxy (defaults to gopls on PATH)."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.75.0",
+    "typescript": "^5.4.0"
+  }
+}
