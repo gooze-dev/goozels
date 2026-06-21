@@ -7,12 +7,12 @@ import (
 	"strings"
 	"time"
 
-	"gooze.dev/goozels/internal/adapter/jsonrpc"
-	"gooze.dev/goozels/internal/adapter/lsp"
-	"gooze.dev/goozels/internal/adapter/reportstore"
-	"gooze.dev/goozels/internal/domain/command"
-	"gooze.dev/goozels/internal/domain/report"
-	"gooze.dev/goozels/internal/model"
+	"gooze.dev/pkg/goozels/internal/adapter/jsonrpc"
+	"gooze.dev/pkg/goozels/internal/adapter/lsp"
+	"gooze.dev/pkg/goozels/internal/adapter/reportstore"
+	"gooze.dev/pkg/goozels/internal/domain/command"
+	"gooze.dev/pkg/goozels/internal/domain/report"
+	"gooze.dev/pkg/goozels/internal/model"
 )
 
 // goozeRunTimeout bounds a single gooze invocation so a hung run can't leak.

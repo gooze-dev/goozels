@@ -3,8 +3,8 @@ package controller
 import (
 	"testing"
 
-	"gooze.dev/goozels/internal/adapter/goozecli"
-	"gooze.dev/goozels/internal/adapter/lsp"
+	"gooze.dev/pkg/goozels/internal/adapter/goozecli"
+	"gooze.dev/pkg/goozels/internal/adapter/lsp"
 )
 
 // Compile-time assertions that the production adapters satisfy the controller's

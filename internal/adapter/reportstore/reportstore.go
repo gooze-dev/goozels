@@ -10,7 +10,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"gooze.dev/goozels/internal/domain/report"
+	"gooze.dev/pkg/goozels/internal/domain/report"
 )
 
 const indexFileName = "_index.yaml"

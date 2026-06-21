@@ -6,9 +6,9 @@ package ignore
 import (
 	"strings"
 
-	"gooze.dev/goozels/internal/domain/directive"
-	"gooze.dev/goozels/internal/domain/mutagen"
-	"gooze.dev/goozels/internal/model"
+	"gooze.dev/pkg/goozels/internal/domain/directive"
+	"gooze.dev/pkg/goozels/internal/domain/mutagen"
+	"gooze.dev/pkg/goozels/internal/model"
 )
 
 const generalDoc = "`gooze:ignore` skips mutation generation. With no names it ignores every mutagen; otherwise list comma-separated mutagen names to skip."

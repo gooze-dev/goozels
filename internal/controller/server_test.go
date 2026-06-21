@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"gooze.dev/goozels/internal/adapter/jsonrpc"
+	"gooze.dev/pkg/goozels/internal/adapter/jsonrpc"
 )
 
 // --- shared test harness ---

@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"gooze.dev/goozels/internal/model"
+	"gooze.dev/pkg/goozels/internal/model"
 )
 
 // Status is the outcome of testing a single mutation. The integer values match

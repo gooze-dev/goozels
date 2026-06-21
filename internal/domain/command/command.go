@@ -4,7 +4,7 @@
 // anything.
 package command
 
-import "gooze.dev/goozels/internal/model"
+import "gooze.dev/pkg/goozels/internal/model"
 
 // Command identifiers advertised to the client and dispatched by the controller.
 const (

@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"gooze.dev/goozels/internal/domain/report"
+	"gooze.dev/pkg/goozels/internal/domain/report"
 )
 
 const sampleReport = `source:

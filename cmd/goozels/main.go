@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"os"
 
-	"gooze.dev/goozels/internal/adapter/gopls"
-	"gooze.dev/goozels/internal/controller"
+	"gooze.dev/pkg/goozels/internal/adapter/gopls"
+	"gooze.dev/pkg/goozels/internal/controller"
 )
 
 func main() {

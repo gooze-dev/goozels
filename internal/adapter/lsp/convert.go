@@ -1,6 +1,6 @@
 package lsp
 
-import "gooze.dev/goozels/internal/model"
+import "gooze.dev/pkg/goozels/internal/model"
 
 // ByteColumn converts an LSP UTF-16 character offset on a line to a byte column,
 // for feeding request positions into the domain.

@@ -9,9 +9,9 @@ import (
 	"io"
 	"sync"
 
-	"gooze.dev/goozels/internal/adapter/goozecli"
-	"gooze.dev/goozels/internal/adapter/jsonrpc"
-	"gooze.dev/goozels/internal/adapter/lsp"
+	"gooze.dev/pkg/goozels/internal/adapter/goozecli"
+	"gooze.dev/pkg/goozels/internal/adapter/jsonrpc"
+	"gooze.dev/pkg/goozels/internal/adapter/lsp"
 )
 
 // Server proxies one editor<->gopls session.

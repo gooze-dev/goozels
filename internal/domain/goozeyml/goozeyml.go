@@ -7,8 +7,8 @@ package goozeyml
 import (
 	"strings"
 
-	"gooze.dev/goozels/internal/domain/config"
-	"gooze.dev/goozels/internal/model"
+	"gooze.dev/pkg/goozels/internal/domain/config"
+	"gooze.dev/pkg/goozels/internal/model"
 )
 
 // entry is a parsed "key: value" mapping line.

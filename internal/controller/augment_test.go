@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"gooze.dev/goozels/internal/adapter/lsp"
+	"gooze.dev/pkg/goozels/internal/adapter/lsp"
 )
 
 func TestMergeCompletionResult(t *testing.T) {

@@ -1,4 +1,4 @@
-module gooze.dev/goozels
+module gooze.dev/pkg/goozels
 
 go 1.26.2
 

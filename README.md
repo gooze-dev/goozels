@@ -58,7 +58,7 @@ goozels finds `gopls` and `gooze` on your `PATH` automatically.
 ## Install
 
 ```bash
-go install gooze.dev/goozels/cmd/goozels@latest
+go install gooze.dev/pkg/goozels/cmd/goozels@latest
 ```
 
 This puts a `goozels` binary in your Go bin directory (usually `~/go/bin` — make

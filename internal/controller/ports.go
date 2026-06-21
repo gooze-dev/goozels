@@ -3,7 +3,7 @@ package controller
 import (
 	"context"
 
-	"gooze.dev/goozels/internal/adapter/lsp"
+	"gooze.dev/pkg/goozels/internal/adapter/lsp"
 )
 
 // GoozeRunner executes gooze subcommands. It is the port the controller depends
