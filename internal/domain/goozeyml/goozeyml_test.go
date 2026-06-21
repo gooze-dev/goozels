@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"gooze.dev/goozels/internal/model"
+	"gooze.dev/pkg/goozels/internal/model"
 )
 
 func TestCompleteTopLevel(t *testing.T) {

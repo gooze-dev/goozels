@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"gooze.dev/goozels/internal/adapter/gopls"
-	"gooze.dev/goozels/internal/adapter/jsonrpc"
+	"gooze.dev/pkg/goozels/internal/adapter/gopls"
+	"gooze.dev/pkg/goozels/internal/adapter/jsonrpc"
 )
 
 // TestRealGoplsInitialize boots the real gopls binary behind the proxy and

@@ -10,7 +10,7 @@ import (
 	"path"
 	"strings"
 
-	"gooze.dev/goozels/internal/domain/config"
+	"gooze.dev/pkg/goozels/internal/domain/config"
 )
 
 // Position is an LSP position; Character is a UTF-16 code-unit offset.

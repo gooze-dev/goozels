@@ -3,11 +3,11 @@ package controller
 import (
 	"encoding/json"
 
-	"gooze.dev/goozels/internal/adapter/jsonrpc"
-	"gooze.dev/goozels/internal/adapter/lsp"
-	"gooze.dev/goozels/internal/domain/goozeyml"
-	"gooze.dev/goozels/internal/domain/ignore"
-	"gooze.dev/goozels/internal/model"
+	"gooze.dev/pkg/goozels/internal/adapter/jsonrpc"
+	"gooze.dev/pkg/goozels/internal/adapter/lsp"
+	"gooze.dev/pkg/goozels/internal/domain/goozeyml"
+	"gooze.dev/pkg/goozels/internal/domain/ignore"
+	"gooze.dev/pkg/goozels/internal/model"
 )
 
 // handleClient routes a message from the editor.

@@ -3,7 +3,7 @@ package lsp
 import (
 	"testing"
 
-	"gooze.dev/goozels/internal/model"
+	"gooze.dev/pkg/goozels/internal/model"
 )
 
 func TestCompletionResult(t *testing.T) {
