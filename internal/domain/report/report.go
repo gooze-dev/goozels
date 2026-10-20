@@ -26,30 +26,38 @@ const (
 	Timeout
 	// Errored means an error occurred while testing the mutation.
 	Errored
+	// NotCovered means no test exercises the mutated line, so the mutant
+	// survives without any test running.
+	NotCovered
 )
 
 // Mutation is one mutation result within a file report.
 type Mutation struct {
-	ID     string
-	Status Status
+	ID      string
+	Mutagen string
+	Status  Status
+	// Diff is gooze's unified diff of the mutated source against the original.
+	// gooze stores it only for mutations that were not killed.
+	Diff []byte
 }
 
-// FileReport is gooze's report for a single source file.
+// FileReport is the merged set of gooze results for a single source file. gooze
+// writes one report per mutation; the adapter groups them by source file.
 type FileReport struct {
 	ShortPath string
 	FullPath  string
 	Mutations []Mutation
-	Diff      []byte
 }
 
 // Summary aggregates a file report's outcomes.
 type Summary struct {
-	Killed   int
-	Survived int
-	Skipped  int
-	Timeout  int
-	Errored  int
-	Total    int
+	Killed     int
+	Survived   int
+	Skipped    int
+	Timeout    int
+	Errored    int
+	NotCovered int
+	Total      int
 }
 
 // Summarize counts a file report's mutation outcomes.
@@ -70,27 +78,33 @@ func Summarize(r FileReport) Summary {
 			s.Timeout++
 		case Errored:
 			s.Errored++
+		case NotCovered:
+			s.NotCovered++
 		}
 	}
 
 	return s
 }
 
-// Score is the mutation score (killed / total) as a percentage, matching gooze's
-// formula. An empty report scores 100.
+// Score is the mutation score as a percentage, matching gooze's formula: killed
+// over all mutations except errored ones. A report with nothing scored is 100.
 func (s Summary) Score() int {
-	if s.Total == 0 {
+	scored := s.Total - s.Errored
+	if scored <= 0 {
 		return 100
 	}
 
-	return s.Killed * 100 / s.Total
+	return s.Killed * 100 / scored
 }
 
 // Message is a one-line human summary for an editor diagnostic.
 func (s Summary) Message() string {
-	return "gooze: " +
-		strconv.Itoa(s.Survived) + "/" + strconv.Itoa(s.Total) + " mutants survived — score " +
-		strconv.Itoa(s.Score()) + "%"
+	msg := "gooze: " + strconv.Itoa(s.Survived) + "/" + strconv.Itoa(s.Total) + " mutants survived"
+	if s.NotCovered > 0 {
+		msg += ", " + strconv.Itoa(s.NotCovered) + " not covered by any test"
+	}
+
+	return msg + " — score " + strconv.Itoa(s.Score()) + "%"
 }
 
 // SummaryDiagnostic returns a top-of-file diagnostic summarizing the report. Its
@@ -99,7 +113,7 @@ func SummaryDiagnostic(r FileReport) model.Diagnostic {
 	s := Summarize(r)
 	severity := model.SeverityInfo
 
-	if s.Survived > 0 {
+	if s.Survived > 0 || s.NotCovered > 0 {
 		severity = model.SeverityWarning
 	}
 
@@ -111,30 +125,50 @@ func SummaryDiagnostic(r FileReport) model.Diagnostic {
 	}
 }
 
-// SurvivorDiagnostics is a best-effort mapping of surviving mutants to source
-// lines by parsing the report's unified diff. gooze does not store per-mutant
-// line positions, so these markers are approximate and only emitted when the
-// report contains at least one survivor.
+// SurvivorDiagnostics marks the original source line each surviving or
+// uncovered mutant changed, read from the mutant's unified diff. Positions refer to the source as
+// gooze tested it, so they drift if the file has been edited since the run.
 func SurvivorDiagnostics(r FileReport) []model.Diagnostic {
-	if Summarize(r).Survived == 0 || len(r.Diff) == 0 {
-		return nil
-	}
-
 	var diags []model.Diagnostic
 
-	for _, line := range hunkLines(string(r.Diff)) {
-		diags = append(diags, model.Diagnostic{
-			Range: model.Range{
-				Start: model.Position{Line: line, Column: 0},
-				End:   model.Position{Line: line, Column: 0},
-			},
-			Severity: model.SeverityWarning,
-			Message:  "gooze: possible surviving mutant near here (approximate)",
-			Source:   "gooze",
-		})
+	for _, mu := range r.Mutations {
+		if mu.Status != Survived && mu.Status != NotCovered {
+			continue
+		}
+
+		for _, c := range diffChanges(string(mu.Diff)) {
+			diags = append(diags, model.Diagnostic{
+				Range: model.Range{
+					Start: model.Position{Line: c.line, Column: c.indent},
+					End:   model.Position{Line: c.line, Column: c.end},
+				},
+				Severity: model.SeverityWarning,
+				Message:  survivorMessage(mu, c.mutated),
+				Source:   "gooze",
+			})
+		}
 	}
 
 	return diags
+}
+
+// survivorMessage tells the reader which change the tests failed to detect.
+func survivorMessage(mu Mutation, mutated string) string {
+	name := "mutant"
+	if mu.Mutagen != "" {
+		name = mu.Mutagen + " mutant"
+	}
+
+	change := "with this line removed"
+	if mutated != "" {
+		change = "with: " + mutated
+	}
+
+	if mu.Status == NotCovered {
+		return "gooze: " + name + " not covered by any test — nothing fails " + change
+	}
+
+	return "gooze: surviving " + name + " — tests still pass " + change
 }
 
 var topOfFile = model.Range{
@@ -142,34 +176,69 @@ var topOfFile = model.Range{
 	End:   model.Position{Line: 0, Column: 0},
 }
 
-// hunkLines extracts zero-based new-file start lines from unified-diff hunk
-// headers ("@@ -a,b +c,d @@").
-func hunkLines(diff string) []int {
-	var lines []int
+// change is one original line a mutation replaced or removed.
+type change struct {
+	line    int    // zero-based line in the original source
+	indent  int    // byte column where the line's code starts
+	end     int    // byte column where the line ends
+	mutated string // replacement text, trimmed; empty when the line was removed
+}
+
+// diffChanges extracts the original lines a unified diff ("--- original",
+// "+++ mutated", "@@ -a,b +c,d @@" hunks) removes, pairing each with the added
+// line that replaced it.
+func diffChanges(diff string) []change {
+	var (
+		changes []change
+		old     = -1 // next original line (one-based); -1 until the first hunk
+		pending = 0  // index into changes of the first unpaired removal
+	)
 
 	for l := range strings.SplitSeq(diff, "\n") {
-		if !strings.HasPrefix(l, "@@") {
-			continue
-		}
-
-		_, after, ok := strings.Cut(l, "+")
-		if !ok {
-			continue
-		}
-
-		num := after
-		if comma := strings.IndexByte(num, ','); comma >= 0 {
-			num = num[:comma]
-		}
-
-		if sp := strings.IndexByte(num, ' '); sp >= 0 {
-			num = num[:sp]
-		}
-
-		if n, err := strconv.Atoi(num); err == nil && n > 0 {
-			lines = append(lines, n-1)
+		switch {
+		case strings.HasPrefix(l, "@@"):
+			old = hunkOldStart(l)
+			pending = len(changes)
+		case old < 0 || strings.HasPrefix(l, "\\"):
+			// File headers before the first hunk and "\ No newline at end of file".
+		case strings.HasPrefix(l, "-"):
+			changes = append(changes, removedLine(old-1, l[1:]))
+			old++
+		case strings.HasPrefix(l, "+"):
+			if pending < len(changes) {
+				changes[pending].mutated = strings.TrimSpace(l[1:])
+				pending++
+			}
+		default: // context line (" text", or "" for a blank line)
+			old++
+			pending = len(changes)
 		}
 	}
 
-	return lines
+	return changes
+}
+
+func removedLine(line int, text string) change {
+	indent := len(text) - len(strings.TrimLeft(text, " \t"))
+
+	return change{line: max(line, 0), indent: indent, end: len(text)}
+}
+
+// hunkOldStart returns the one-based original start line from a hunk header
+// ("@@ -a,b +c,d @@"), or -1 when the header is malformed.
+func hunkOldStart(header string) int {
+	_, after, ok := strings.Cut(header, "-")
+	if !ok {
+		return -1
+	}
+
+	num, _, _ := strings.Cut(after, " ")
+	num, _, _ = strings.Cut(num, ",")
+
+	n, err := strconv.Atoi(num)
+	if err != nil || n < 1 {
+		return -1
+	}
+
+	return n
 }

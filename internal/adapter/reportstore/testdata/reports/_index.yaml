@@ -1,0 +1,6 @@
+total_mutations: 4
+killed_mutations: 0
+survived_mutations: 2
+failed_mutations: 0
+ignored_mutations: 0
+not_covered_mutations: 2

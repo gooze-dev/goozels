@@ -13,7 +13,7 @@ import (
 var (
 	_ GoozeRunner = goozecli.Runner{}
 	_ Documents   = (*docstore.Store)(nil)
-	_ Reports     = reportstore.Workspace{}
+	_ Reports     = (*reportstore.Workspace)(nil)
 )
 
 func TestPortsSatisfied(t *testing.T) {
@@ -25,7 +25,7 @@ func TestPortsSatisfied(t *testing.T) {
 	if (Documents)(docstore.New()) == nil {
 		t.Fatal("docstore.Store should satisfy Documents")
 	}
-	if (Reports)(reportstore.Workspace{}) == nil {
+	if (Reports)(reportstore.NewWorkspace()) == nil {
 		t.Fatal("reportstore.Workspace should satisfy Reports")
 	}
 }

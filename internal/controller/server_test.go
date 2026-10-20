@@ -17,7 +17,7 @@ func productionDeps(goozePath string) Deps {
 	return Deps{
 		Gooze:     goozecli.New(goozePath),
 		Documents: docstore.New(),
-		Reports:   reportstore.Workspace{},
+		Reports:   reportstore.NewWorkspace(),
 	}
 }
 

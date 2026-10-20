@@ -30,7 +30,7 @@ func main() {
 	srv := controller.NewServer(os.Stdout, proc.Stdin, controller.Deps{
 		Gooze:     goozecli.New(*goozePath),
 		Documents: docstore.New(),
-		Reports:   reportstore.Workspace{},
+		Reports:   reportstore.NewWorkspace(),
 	})
 	_ = srv.Run(os.Stdin, proc.Stdout)
 

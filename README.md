@@ -30,7 +30,9 @@ keep **all** your normal Go features and simply get gooze ones on top.
   leaving the editor.
 - **Report results, in your editor.** After a run, goozels reads gooze's reports
   and shows each file's mutation score at the top — e.g. *"gooze: 2/10 mutants
-  survived — score 80%"* — and marks the approximate spots where mutants survived.
+  survived — score 80%"* — and marks each line where a mutant survived, with the
+  change your tests missed (*"surviving comparison mutant — tests still pass
+  with: `if x <= 0`"*). Mutants on lines no test runs are marked as not covered.
 
 **In your `gooze.yaml`**
 
@@ -77,6 +79,7 @@ Pick your editor — each guide is a couple of lines of config:
 | **VS Code** | [editors/vscode/README.md](editors/vscode/README.md) — easiest: add `"go.alternateTools": { "gopls": "goozels" }` to settings |
 | **Neovim** | [editors/neovim.md](editors/neovim.md) |
 | **GoLand / IntelliJ** | [editors/jetbrains.md](editors/jetbrains.md) |
+| **Claude Code** | [editors/claude-code/](editors/claude-code/README.md) — a ready-to-load plugin; see [Use with Claude Code](#use-with-claude-code) |
 | **Other LSP editors** | Launch `goozels` over stdio wherever you'd launch `gopls`, and also attach it to `gooze.yaml` files. |
 
 > goozels **replaces** gopls in your editor (it runs gopls for you behind the
@@ -102,6 +105,116 @@ goozels needs no configuration, but you can point it at specific binaries:
 | `--gopls PATH` | `GOOZELS_GOPLS` | `gopls` on `PATH` | The Go language server to run behind goozels |
 | `--gooze PATH` | `GOOZELS_GOOZE` | `gooze` on `PATH` | The gooze binary used by the run / list buttons |
 
+## Use with Claude Code
+
+[Claude Code](https://claude.com/claude-code) can use goozels as its Go language
+server. Claude then sees each file's mutation score and surviving-mutant markers
+right after it edits that file, so it can write tests aimed at the mutants that
+survived, rerun gooze, and check that the score went up.
+
+### 1. Load the plugin
+
+This repo ships a ready-to-load plugin in
+[`editors/claude-code/`](editors/claude-code/README.md). With goozels installed
+(see [Install](#install)), start Claude Code with it:
+
+```bash
+claude --plugin-dir /absolute/path/to/goozels/editors/claude-code
+```
+
+`--plugin-dir` loads the plugin for that session only (it shows up as `@inline`
+in `/plugin`). To install it permanently, publish the directory to a plugin
+marketplace and install it with `/plugin install`.
+
+### 2. Turn off the official gopls plugin
+
+goozels already runs gopls for you. If the official `gopls-lsp` plugin is
+enabled, disable it in `/plugin`, or in your settings:
+
+```json
+{
+  "enabledPlugins": {
+    "gopls-lsp@claude-plugins-official": false
+  }
+}
+```
+
+Then run `/reload-plugins`. When two servers claim `.go`, Claude Code uses only
+one, and the `/plugin` **Errors** tab shows
+`LSP server "<name>" is not used for .go files`.
+
+> Claude Code matches language servers by **file extension only**, so the
+> plugin's `.yaml` and `.yml` entries send every YAML file to goozels, not just
+> `gooze.yaml`. goozels only checks gooze config files, but if you'd rather not
+> route other YAML through it, remove those entries from
+> [`editors/claude-code/.lsp.json`](editors/claude-code/.lsp.json).
+
+### What Claude gets
+
+- **Diagnostics after every edit.** When Claude edits a file it automatically
+  receives that file's diagnostics: gopls errors, `//gooze:ignore` mistakes,
+  `gooze.yaml` validation, and the file's mutation score
+  (*"gooze: 2/10 mutants survived — score 80%"*) with survivor markers.
+- **Code navigation.** Go to definition, find references, hover and symbols,
+  passed through to gopls.
+
+Code lenses, completion and the ▶ run buttons are editor-only. Claude runs
+`gooze` itself through its shell instead.
+
+### The loop
+
+1. Run `gooze run ./pkg/...` (or ask Claude to).
+2. Claude opens or edits a file in that package.
+3. It sees *"gooze: N/M mutants survived — score X%"* and the survivor markers.
+4. It writes tests aimed at those mutants.
+5. It reruns gooze and checks that the score went up.
+
+Example prompts:
+
+- *"Run gooze on `./internal/domain/...`, then kill the surviving mutants in
+  `ignore.go` without changing production code."*
+- *"Which files in `./pkg/lsp/...` have the lowest gooze score? Start with the
+  worst one and add tests until it's above 90%."*
+- *"Look at the gooze diagnostics in `parser.go` and tell me which survivors are
+  real test gaps and which are equivalent mutants worth a `//gooze:ignore`."*
+
+**Tell Claude about it once.** Add a short note to your project's `CLAUDE.md`:
+
+```markdown
+## Mutation testing (gooze)
+- After adding or changing tests, rerun `gooze run <pkg>` for the package you touched.
+- Treat `gooze` diagnostics (mutation score, surviving-mutant markers) as targets:
+  add tests that kill those mutants. Don't change production code just to raise the score.
+```
+
+**Skip the permission prompts.** Allow the gooze commands in your settings
+(`.claude/settings.json`):
+
+```json
+{
+  "permissions": {
+    "allow": ["Bash(gooze run *)", "Bash(gooze list *)"]
+  }
+}
+```
+
+### Troubleshooting (Claude Code)
+
+- **Plugin loads but no diagnostics** — open `/plugin` and check the **Errors**
+  tab. `Executable not found in $PATH: "goozels"` means goozels isn't on the
+  `PATH` of the shell you launched `claude` from (see the last item in
+  [Troubleshooting](#troubleshooting)).
+- **Server won't start** — run `claude --debug` and look for
+  `LSP server <name> failed to start`.
+- **Not used for `.go` files** — another Go plugin (usually `gopls-lsp`) is
+  enabled. See step 2.
+- Language-server plugins are not available in cloud sessions or safe mode.
+
+### Known limitations
+
+Survivor markers point at the line as gooze tested it. If Claude (or you) edits
+the file afterwards, markers can drift until you rerun gooze.
+
 ## Troubleshooting
 
 - **No Go features at all** — goozels couldn't start `gopls`. Make sure `gopls` is
@@ -110,9 +223,9 @@ goozels needs no configuration, but you can point it at specific binaries:
   your `PATH`. Install it (see Requirements) or set `GOOZELS_GOOZE`.
 - **No report scores appear** — run mutation testing first (the **▶ gooze run**
   button or `gooze run ./...`). goozels reads the `.gooze-reports/` directory in
-  your workspace root. The per-line "surviving mutant" markers are **approximate**:
-  gooze doesn't record exact line positions in its reports, so the file-level
-  score is exact but the in-line markers are a best-effort hint.
+  your workspace root. Scores refresh after every gooze run. The per-line markers
+  come from each mutant's diff, so they point at the line as gooze tested it and
+  can drift if you edit the file before rerunning gooze.
 - **Doubled completions in GoLand** — GoLand has its own Go engine, so it shows
   both. See the note in the [JetBrains guide](editors/jetbrains.md).
 - **`goozels: command not found`** — your Go bin directory isn't on `PATH`. Add

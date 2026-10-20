@@ -1,0 +1,9 @@
+{
+  "name": "goozels-lsp",
+  "version": "0.1.0",
+  "description": "Go language server with gooze mutation-testing support: gopls features plus //gooze:ignore checks, gooze.yaml validation, and per-file mutation scores from .gooze-reports/",
+  "author": {
+    "name": "gooze-dev",
+    "url": "https://github.com/gooze-dev"
+  }
+}

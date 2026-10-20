@@ -1,0 +1,10 @@
+{
+  "goozels": {
+    "command": "goozels",
+    "extensionToLanguage": {
+      ".go": "go",
+      ".yaml": "yaml",
+      ".yml": "yaml"
+    }
+  }
+}

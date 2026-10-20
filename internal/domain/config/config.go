@@ -149,7 +149,13 @@ func (f Field) ValidateScalar(raw string) string {
 		}
 	case KindEnum:
 		return f.validateEnum(raw)
-	case KindObject, KindString, KindStringList:
+	case KindObject:
+		// A flow mapping ("run: {parallel: 4}") is valid YAML; anything else
+		// replaces the section's settings with a plain value.
+		if !strings.HasPrefix(raw, "{") {
+			return "is a section; put its settings on indented lines below it"
+		}
+	case KindString, KindStringList:
 		// No scalar validation applies to these kinds.
 	}
 
