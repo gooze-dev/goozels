@@ -1,6 +1,9 @@
 package gopls
 
 import (
+	"bytes"
+	"context"
+	"io"
 	"os/exec"
 	"testing"
 )
@@ -44,4 +47,27 @@ func TestStartDefaultsBinaryName(t *testing.T) {
 	}
 	_ = proc.Kill()
 	_ = proc.Wait()
+}
+
+func TestRun(t *testing.T) {
+	if _, err := exec.LookPath("echo"); err != nil {
+		t.Skip("echo not available")
+	}
+	var out bytes.Buffer
+	if err := Run(context.Background(), "echo", &out, io.Discard, "version", "-json"); err != nil || out.String() != "version -json\n" {
+		t.Errorf("Run = %q, %v", out.String(), err)
+	}
+	if err := Run(context.Background(), "/nonexistent/gopls-xyz", io.Discard, io.Discard); err == nil {
+		t.Error("expected an error running a missing binary")
+	}
+}
+
+func TestRunDefaultsBinaryName(t *testing.T) {
+	if _, err := exec.LookPath("gopls"); err != nil {
+		t.Skip("gopls not on PATH")
+	}
+	var out bytes.Buffer
+	if err := Run(context.Background(), "", &out, io.Discard, "version"); err != nil || !bytes.Contains(out.Bytes(), []byte("gopls")) {
+		t.Errorf("Run with an empty path should run gopls: %q, %v", out.String(), err)
+	}
 }

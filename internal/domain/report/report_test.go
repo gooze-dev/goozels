@@ -56,15 +56,15 @@ func TestForFile(t *testing.T) {
 
 func TestMessage(t *testing.T) {
 	msg := Message(Summarize(sample()))
-	if msg != "gooze: 1/4 mutants survived — score 50.00%" {
+	if msg != "gooze: score 50.00% — 2 killed, 1 survived, 1 skipped" {
 		t.Errorf("message = %q", msg)
 	}
 }
 
 func TestMessageNotCoveredAndError(t *testing.T) {
-	reports := []rpt.Report{newReport("x.go", "", rpt.Killed, rpt.NotCovered, rpt.Error, rpt.Error)}
+	reports := []rpt.Report{newReport("x.go", "", rpt.Killed, rpt.NotCovered, rpt.Timeout, rpt.Error, rpt.Error)}
 	msg := Message(Summarize(reports))
-	if msg != "gooze: 0/4 mutants survived, 1 not covered — score 50.00%" {
+	if msg != "gooze: score 33.33% — 1 killed, 1 not covered by any test, 1 timed out, 2 errored" {
 		t.Errorf("message = %q", msg)
 	}
 }
@@ -80,84 +80,6 @@ func TestSummaryDiagnosticSeverity(t *testing.T) {
 	clean := []rpt.Report{newReport("x.go", "", rpt.Killed, rpt.Error, rpt.Timeout)}
 	if d := SummaryDiagnostic(clean); d.Severity != model.SeverityInfo {
 		t.Errorf("severity without survivors = %v, want info", d.Severity)
-	}
-}
-
-// realDiff is a unified diff as gooze stores it for a mutant: three lines of
-// context, so the hunk starts three lines before the mutated line. gooze writes
-// blank context lines as " "; editors strip that trailing space here, and
-// diffChanges treats both forms alike.
-const realDiff = `--- original
-+++ mutated
-@@ -205,7 +205,7 @@
- }
-
- func isLeadingComment(line int, slashOffset int, lineStarts []int, content []byte) bool {
--	if line <= 0 || line > len(lineStarts) {
-+	if line == 0 || line > len(lineStarts) {
- 		return false
- 	}
-
-`
-
-func withName(r rpt.Report, name string) rpt.Report {
-	r.Result[0].Name = name
-	return r
-}
-
-func TestSurvivorDiagnosticsMarksMutatedLine(t *testing.T) {
-	reports := []rpt.Report{
-		withName(newReport("x.go", realDiff, rpt.Survived), "comparison"),
-		withName(newReport("x.go", realDiff, rpt.Killed), "comparison"),
-	}
-
-	diags := SurvivorDiagnostics(reports)
-	if len(diags) != 1 {
-		t.Fatalf("expected 1 survivor diagnostic (killed mutants are not marked), got %d", len(diags))
-	}
-
-	d := diags[0]
-	if d.Range.Start.Line != 207 { // the "-" line is 1-based 208, not the hunk start 205
-		t.Errorf("line = %d, want 207", d.Range.Start.Line)
-	}
-	if d.Range.Start.Column != 1 || d.Range.End.Column != len("\tif line <= 0 || line > len(lineStarts) {") {
-		t.Errorf("columns = %d..%d, want the code after the tab", d.Range.Start.Column, d.Range.End.Column)
-	}
-	want := "gooze: surviving comparison mutant — tests still pass with: if line == 0 || line > len(lineStarts) {"
-	if d.Message != want {
-		t.Errorf("message = %q\nwant      %q", d.Message, want)
-	}
-}
-
-func TestSurvivorDiagnosticsNotCoveredAndRemoval(t *testing.T) {
-	removal := "--- original\n+++ mutated\n@@ -3,3 +3,2 @@\n a()\n-\tb()\n c()\n"
-	reports := []rpt.Report{
-		withName(newReport("x.go", removal, rpt.NotCovered), "statement"),
-		newReport("x.go", hunk, rpt.Timeout),
-	}
-
-	diags := SurvivorDiagnostics(reports)
-	if len(diags) != 1 || diags[0].Range.Start.Line != 3 {
-		t.Fatalf("diags = %+v, want one marker on 0-based line 3 (timeouts are not marked)", diags)
-	}
-	if !strings.Contains(diags[0].Message, "not covered by any test") || !strings.Contains(diags[0].Message, "line removed") {
-		t.Errorf("message = %q", diags[0].Message)
-	}
-
-	clean := []rpt.Report{newReport("x.go", hunk, rpt.Killed)}
-	if got := SurvivorDiagnostics(clean); got != nil {
-		t.Errorf("expected nil for clean report, got %v", got)
-	}
-}
-
-func TestDiffChangesMultipleHunksAndBlankContext(t *testing.T) {
-	diff := "--- original\n+++ mutated\n@@ -1,3 +1,3 @@\n a\n-b\n+B\n\n@@ -10,2 +10,2 @@\n-x\n+X\n y\n\\ No newline at end of file\n"
-	got := diffChanges(diff)
-	if len(got) != 2 || got[0].line != 1 || got[0].mutated != "B" || got[1].line != 9 || got[1].mutated != "X" {
-		t.Errorf("changes = %+v", got)
-	}
-	if diffChanges("") != nil || diffChanges("@@ garbage @@\n-x\n") != nil {
-		t.Error("empty or malformed diffs should yield no changes")
 	}
 }
 
@@ -182,5 +104,122 @@ func TestSourcesForTest(t *testing.T) {
 	}
 	if got := SourcesForTest(reports, "/w", "/w/calc/calc.go"); len(got) != 0 {
 		t.Errorf("a source file is not a test: got %v", got)
+	}
+}
+
+func TestMessagePerfectScore(t *testing.T) {
+	reports := []rpt.Report{newReport("x.go", "", rpt.Killed, rpt.Killed)}
+	if msg := Message(Summarize(reports)); msg != "gooze: score 100.00% — 2 killed" {
+		t.Errorf("message = %q", msg)
+	}
+}
+
+func TestMatching(t *testing.T) {
+	reports := []rpt.Report{
+		newReport("x.go", "", rpt.Killed),
+		newReport("pkg/a.go", "", rpt.Killed),
+		newReport("pkg/sub/b.go", "", rpt.Killed),
+		{},
+	}
+	count := func(pattern string) int { return len(Matching(reports, "/w", pattern)) }
+	for pattern, want := range map[string]int{"./...": 3, "...": 3, ".": 1, "./pkg": 1, "./pkg/...": 2, "./pkg/sub": 1, "./other": 0} {
+		if got := count(pattern); got != want {
+			t.Errorf("Matching(%q) = %d reports, want %d", pattern, got, want)
+		}
+	}
+}
+
+// calcSource is the source text a report was made from, with a surviving
+// mutant on its third line.
+const calcSource = "package calc\n\nfunc f(n int) bool { return n > 0 }\n"
+
+const calcDiff = "--- original\n+++ mutated\n@@ -2,2 +2,2 @@\n \n-func f(n int) bool { return n > 0 }\n+func f(n int) bool { return n >= 0 }\n"
+
+func calcReport() rpt.Report {
+	r := withName(newReport("calc.go", calcDiff, rpt.Survived), "comparison")
+	r.Source.Origin.Hash = hashOf(calcSource)
+	r.Source.Test = &rpt.File{ShortPath: "calc_test.go", Hash: hashOf("package calc\n")}
+	return r
+}
+
+func messages(diags []model.Diagnostic) []string {
+	var out []string
+	for _, d := range diags {
+		out = append(out, d.Message)
+	}
+	return out
+}
+
+func TestDiagnosticsFresh(t *testing.T) {
+	cur := Current{Text: calcSource, Tests: map[string]string{"/w/calc_test.go": "package calc\n"}, Rerun: "gooze run ."}
+	got := messages(Diagnostics([]rpt.Report{calcReport()}, "/w", "/w/calc.go", cur))
+	want := []string{
+		"gooze: score 0.00% — 0 killed, 1 survived",
+		"gooze: surviving comparison mutant — tests still pass with `func f(n int) bool { return n > 0 }` → `func f(n int) bool { return n >= 0 }`",
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("diagnostics =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+	if Diagnostics([]rpt.Report{calcReport()}, "/w", "/w/other.go", cur) != nil {
+		t.Error("a file without reports should yield nil")
+	}
+}
+
+func TestDiagnosticsSourceChanged(t *testing.T) {
+	tests := map[string]string{"/w/calc_test.go": "package calc\n"}
+
+	shifted := Current{Text: "package calc\n\n// doc\nfunc f(n int) bool { return n > 0 }\n", Tests: tests, Rerun: "gooze run ."}
+	got := messages(Diagnostics([]rpt.Report{calcReport()}, "/w", "/w/calc.go", shifted))
+	want := "gooze: results are from before calc.go changed; score then 0.00%; rerun: gooze run ."
+	if len(got) != 1 || got[0] != want {
+		t.Errorf("a moved line must not be marked; got %q, want only %q", got, want)
+	}
+
+	tail := Current{Text: calcSource + "\nfunc g() {}\n", Tests: tests}
+	got = messages(Diagnostics([]rpt.Report{calcReport()}, "/w", "/w/calc.go", tail))
+	if len(got) != 2 || got[0] != "gooze: results are from before calc.go changed; score then 0.00%" {
+		t.Errorf("a line that still reads as tested keeps its marker; got %q", got)
+	}
+}
+
+func TestDiagnosticsTestChanged(t *testing.T) {
+	cur := Current{Text: calcSource, Tests: map[string]string{"/w/calc_test.go": "package calc // edited\n"}, Rerun: "gooze run ."}
+	got := messages(Diagnostics([]rpt.Report{calcReport()}, "/w", "/w/calc.go", cur))
+	if len(got) != 2 || got[0] != "gooze: tests changed since the last run (calc_test.go); score then 0.00%; rerun: gooze run ." {
+		t.Errorf("diagnostics = %q", got)
+	}
+}
+
+func TestNamesAndResolveNeedAShortPath(t *testing.T) {
+	r := rpt.Report{Source: rpt.Source{Origin: &rpt.File{FullPath: "/build/x.go"}, Test: &rpt.File{FullPath: "/build/x_test.go"}}}
+	if got := ForFile([]rpt.Report{r}, "/w", "/w"); got != nil {
+		t.Errorf("an empty ShortPath must not name the workdir, got %+v", got)
+	}
+	if got := ForFile([]rpt.Report{r}, "/w", "/a.go"); got != nil {
+		t.Errorf("FullPath must match exactly, got %+v", got)
+	}
+	if got := SourcesForTest([]rpt.Report{r}, "/w", "/build/x_test.go"); strings.Join(got, ",") != "/build/x.go" {
+		t.Errorf("without a ShortPath the source is its FullPath, got %v", got)
+	}
+}
+
+func TestDiagnosticsSummaryAtTopOfFile(t *testing.T) {
+	diags := Diagnostics([]rpt.Report{calcReport()}, "/w", "/w/calc.go", Current{Text: calcSource})
+	if diags[0].Range != (model.Range{}) {
+		t.Errorf("summary range = %+v, want the start of the file", diags[0].Range)
+	}
+}
+
+func TestDiagnosticsStaleKeepsOnlyMatchingLines(t *testing.T) {
+	r := calcReport()
+	for name, text := range map[string]string{
+		"line replaced by greater text": "package calc\n\nzzz\n",
+		"file now shorter":              "package calc\n",
+		"file now much shorter":         "x",
+	} {
+		got := messages(Diagnostics([]rpt.Report{r}, "/w", "/w/calc.go", Current{Text: text}))
+		if len(got) != 1 {
+			t.Errorf("%s: got %q, want only the stale notice", name, got)
+		}
 	}
 }

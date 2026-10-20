@@ -27,6 +27,7 @@ type Server struct {
 	reports  report.Reader
 	config   config.Registry
 	goozeyml goozeyml.Editor
+	checker  Checker
 
 	mu         sync.Mutex
 	pending    map[string]func(resp *jsonrpc.Message) // gopls response augmenters, keyed by request id
@@ -45,6 +46,7 @@ func NewServer(clientOut, goplsOut io.Writer, deps Deps) *Server {
 		reports:    deps.Reports,
 		config:     deps.Config,
 		goozeyml:   goozeyml.New(deps.Config),
+		checker:    Checker{Reports: deps.Reports, Config: deps.Config, Files: deps.Files},
 		pending:    map[string]func(*jsonrpc.Message){},
 		goplsDiags: map[string][]lsp.Diagnostic{},
 		workdir:    ".",

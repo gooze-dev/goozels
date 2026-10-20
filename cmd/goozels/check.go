@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -13,72 +12,97 @@ import (
 	"gooze.dev/pkg/gooze/pkg/config"
 	"gooze.dev/pkg/gooze/pkg/report"
 
+	"gooze.dev/pkg/goozels/internal/adapter/osfs"
 	"gooze.dev/pkg/goozels/internal/adapter/reportcache"
 	"gooze.dev/pkg/goozels/internal/controller"
 	"gooze.dev/pkg/goozels/internal/model"
 )
 
-// maxHookLines caps the diagnostics a hook adds to an agent's context, so a
-// file with hundreds of surviving mutants does not flood it.
-const maxHookLines = 40
+const checkUsage = "usage: goozels check [-workdir DIR] [-max N] FILE..."
 
 // newChecker wires the checker to gooze's report reader and config schema, as
-// the language server does.
-func newChecker() controller.Checker {
-	return controller.Checker{Reports: reportcache.New(report.NewDirReader()), Config: config.NewRegistry()}
+// the language server does. Rerun commands are given for a reader in cwd.
+func newChecker(cwd string) controller.Checker {
+	return controller.Checker{
+		Reports: reportcache.New(report.NewDirReader()),
+		Config:  config.NewRegistry(),
+		Files:   osfs.FS{},
+		Cwd:     cwd,
+	}
 }
 
-// runCheck implements `goozels check [-workdir dir] file...`: it prints gooze
-// diagnostics as "path:line:col: severity: message" lines and prints nothing for
-// clean files. It returns 2 on usage errors and 1 when a file cannot be read.
+// runCheck implements `goozels check [-workdir DIR] [-max N] FILE...`: it
+// prints gooze diagnostics as "path:line:col: severity: message" lines. A Go
+// file gooze has no results for gets a note on stderr. It returns 2 on usage
+// errors, 1 when an error diagnostic was printed or a file cannot be read, and
+// 0 otherwise.
 func runCheck(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("check", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	workdir := fs.String("workdir", ".", "workspace root containing gooze's .gooze-reports directory")
+	workdir := fs.String("workdir", "", "workspace root containing gooze's "+config.DefaultReportsDir+
+		" directory (default: the nearest directory above each file that has one, else its go.mod directory)")
+	maxLines := fs.Int("max", 0, "print at most N diagnostics, then a line naming the files with more (0: no limit)")
 
-	if err := fs.Parse(args); err != nil || fs.NArg() == 0 {
-		_, _ = fmt.Fprintln(stderr, "usage: goozels check [-workdir dir] file...")
+	// Equivalent: NArg is never negative, so <= 0 is == 0.
+	if err := fs.Parse(args); err != nil || fs.NArg() == 0 || *maxLines < 0 { //gooze:ignore comparison
+		_, _ = fmt.Fprintln(stderr, checkUsage)
 
 		return 2
 	}
 
-	checker := newChecker()
+	cwd, _ := os.Getwd()
+	checker := newChecker(cwd)
 	status := 0
 
+	var entries []entry
+
 	for _, file := range fs.Args() {
-		lines, err := checkFile(checker, *workdir, file)
+		found, err := checkFile(checker, *workdir, cwd, file)
 		if err != nil {
 			_, _ = fmt.Fprintf(stderr, "goozels: %v\n", err)
 
 			status = 1
 		}
 
-		if len(lines) > 0 {
-			if _, err := fmt.Fprintln(stdout, strings.Join(lines, "\n")); err != nil {
-				return 1
-			}
+		entries = append(entries, found...)
+	}
+
+	out := render(uniqueEntries(entries), renderOptions{maxLines: *maxLines})
+	for _, n := range out.notes {
+		_, _ = fmt.Fprintln(stderr, "goozels: "+n)
+	}
+
+	// Equivalent: a length is never negative, so != 0 is > 0 (>= 0 is killed by a test).
+	if len(out.lines) > 0 { //gooze:ignore comparison
+		if _, err := fmt.Fprintln(stdout, strings.Join(out.lines, "\n")); err != nil {
+			return 1
 		}
+	}
+
+	if out.errors {
+		status = 1
 	}
 
 	return status
 }
 
-// checkFile returns the formatted diagnostics for one file, plus those of the
-// source files it tests when it is a _test.go file, with paths shown relative
-// to workdir when possible.
-func checkFile(checker controller.Checker, workdir, file string) ([]string, error) {
+// entry is what checking found for one file: its diagnostics, or a note that
+// gooze has no results for it.
+type entry struct {
+	abs   string
+	shown string
+	check controller.FileCheck
+	note  string
+	brief bool // show only the summary: the full results were already shown
+}
+
+// checkFile checks one file, plus the source files it tests when it is a
+// _test.go file. Paths are shown relative to base when they are inside it.
+// workdir, when empty, is found from the file's directory (see findWorkdir).
+func checkFile(checker controller.Checker, workdir, base, file string) ([]entry, error) {
 	abs, err := filepath.Abs(file)
-	if err != nil {
+	if err != nil || !checker.Handles(abs) {
 		return nil, err
-	}
-
-	root, err := filepath.Abs(workdir)
-	if err != nil {
-		return nil, err
-	}
-
-	if !checker.Handles(abs) {
-		return nil, nil
 	}
 
 	text, err := os.ReadFile(abs) //nolint:gosec // the caller names the file to check
@@ -86,39 +110,143 @@ func checkFile(checker controller.Checker, workdir, file string) ([]string, erro
 		return nil, err
 	}
 
-	shown := abs
-	if rel, err := filepath.Rel(root, abs); err == nil && !strings.HasPrefix(rel, "..") {
-		shown = rel
+	root := workdir
+	// Equivalent: no string sorts below "", so <= "" is == "" (>= "" is killed by a test).
+	if root == "" { //gooze:ignore comparison
+		root = findWorkdir(filepath.Dir(abs), base)
 	}
 
-	diags := checker.Check(root, abs, string(text))
-	lines := make([]string, 0, len(diags))
-
-	for _, d := range diags {
-		lines = append(lines, formatDiagnostic(shown, d))
+	if root, err = filepath.Abs(root); err != nil {
+		return nil, err
 	}
 
-	return append(lines, testedSourceLines(checker, workdir, root, abs)...), nil
+	e := entry{abs: abs, shown: shownPath(base, abs), check: checker.Check(root, abs, string(text))}
+	if !strings.HasSuffix(abs, ".go") {
+		return []entry{e}, nil
+	}
+
+	tested := testedSources(checker, root, base, abs)
+	if e.check.Results == nil && !hasResults(tested) {
+		e.note = noResultsNote(e)
+	}
+
+	return append([]entry{e}, tested...), nil
 }
 
-// testedSourceLines returns the diagnostics of the source files a test file
-// covers, since gooze reports scores and surviving mutants per source file.
-// Writing tests is how mutants get killed, so these are the targets for the
-// file just edited. Unreadable sources are skipped.
-func testedSourceLines(checker controller.Checker, workdir, root, abs string) []string {
-	var lines []string
+// noResultsNote says that gooze has no results for a Go file: not yet, or,
+// when other files of its package have results, none because it had nothing
+// to mutate or is newer than the run.
+func noResultsNote(e entry) string {
+	if e.check.PackageTested && !strings.HasSuffix(e.abs, "_test.go") {
+		return "no gooze results for " + e.shown + ": gooze found nothing to mutate in it, or it is newer than the last run of " +
+			e.check.Package
+	}
+
+	return "no gooze results for " + e.shown + " yet; run: " + e.check.Rerun
+}
+
+// testedSources checks the source files a test file covers, since gooze
+// reports scores and surviving mutants per source file. Writing tests is how
+// mutants get killed, so these are the targets for the file just edited.
+// Unreadable sources are skipped.
+func testedSources(checker controller.Checker, root, base, abs string) []entry {
+	var entries []entry
 
 	for _, src := range checker.SourcesForTest(root, abs) {
-		if src == abs || strings.HasSuffix(src, "_test.go") {
+		// Equivalent: a report never names a test file as its source, so the test (src == abs) only guards bad reports.
+		if src == abs || strings.HasSuffix(src, "_test.go") { //gooze:ignore comparison,logical
 			continue
 		}
 
-		if found, err := checkFile(checker, workdir, src); err == nil {
-			lines = append(lines, found...)
+		if found, err := checkFile(checker, root, base, src); err == nil {
+			entries = append(entries, found...)
 		}
 	}
 
-	return lines
+	return entries
+}
+
+// uniqueEntries drops repeated checks of the same file, such as a source named
+// next to its test, keeping the first.
+func uniqueEntries(entries []entry) []entry {
+	seen := map[string]bool{}
+	unique := entries[:0]
+
+	for _, e := range entries {
+		if !seen[e.abs] {
+			seen[e.abs] = true
+
+			unique = append(unique, e)
+		}
+	}
+
+	return unique
+}
+
+func hasResults(entries []entry) bool {
+	for _, e := range entries {
+		if e.check.Results != nil {
+			return true
+		}
+	}
+
+	return false
+}
+
+// findWorkdir returns the nearest directory at or above dir that holds gooze's
+// reports directory, else the nearest one with a go.mod, else fallback.
+func findWorkdir(dir, fallback string) string {
+	module := ""
+
+	for d := dir; ; d = filepath.Dir(d) {
+		if isDir(filepath.Join(d, config.DefaultReportsDir)) {
+			return d
+		}
+
+		// Equivalent: no string sorts below "", so <= "" is == "" (>= "" is killed by a test).
+		if module == "" && exists(filepath.Join(d, "go.mod")) { //gooze:ignore comparison
+			module = d
+		}
+
+		// Equivalent: a parent directory's path sorts below its child's, so >= is == here.
+		if filepath.Dir(d) == d { //gooze:ignore comparison
+			break
+		}
+	}
+
+	// Equivalent: no string sorts below "", so > "" is != "".
+	if module != "" { //gooze:ignore comparison
+		return module
+	}
+
+	return fallback
+}
+
+func isDir(path string) bool {
+	info, err := os.Stat(path)
+
+	return err == nil && info.IsDir()
+}
+
+func exists(path string) bool {
+	_, err := os.Stat(path)
+
+	return err == nil
+}
+
+// shownPath is abs relative to base when it lies inside base, else abs.
+func shownPath(base, abs string) string {
+	// Equivalent: no string sorts below "", so < "" never holds and <= "" is == "".
+	if base == "" { //gooze:ignore comparison
+		return abs
+	}
+
+	rel, err := filepath.Rel(base, abs)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return abs
+	}
+
+	return rel
 }
 
 // formatDiagnostic renders a diagnostic in the compiler-style form editors and
@@ -126,137 +254,4 @@ func testedSourceLines(checker controller.Checker, workdir, root, abs string) []
 func formatDiagnostic(path string, d model.Diagnostic) string {
 	return path + ":" + strconv.Itoa(d.Range.Start.Line+1) + ":" + strconv.Itoa(d.Range.Start.Column+1) +
 		": " + d.Severity.String() + ": " + d.Message
-}
-
-// hookInput is the part of a PostToolUse hook payload goozels reads. Claude Code
-// names the edited file in tool_input.file_path; Codex sends the apply_patch
-// text (or a shell command) in tool_input.command.
-type hookInput struct {
-	Cwd       string `json:"cwd"`
-	ToolInput struct {
-		FilePath string          `json:"file_path"`
-		Command  json.RawMessage `json:"command"`
-	} `json:"tool_input"`
-}
-
-type hookOutput struct {
-	HookSpecificOutput struct {
-		HookEventName     string `json:"hookEventName"`
-		AdditionalContext string `json:"additionalContext"`
-	} `json:"hookSpecificOutput"`
-}
-
-// patchFileMarkers prefix the lines of a Codex apply_patch envelope that name a
-// file left on disk after the patch ("*** Delete File:" is skipped).
-var patchFileMarkers = []string{"*** Add File: ", "*** Update File: ", "*** Move to: "}
-
-const hookUsage = "usage: goozels hook claude|codex  (reads a PostToolUse hook payload on stdin)"
-
-// runHook implements `goozels hook claude|codex`: a PostToolUse hook that finds
-// the files an edit touched and, when gooze has something to say about them,
-// returns the diagnostics as additionalContext. Both agents read that same
-// reply. It never blocks the edit; any problem just yields no output.
-func runHook(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
-	if len(args) != 1 || (args[0] != "claude" && args[0] != "codex") {
-		_, _ = fmt.Fprintln(stderr, hookUsage)
-
-		return 2
-	}
-
-	var in hookInput
-	if err := json.NewDecoder(stdin).Decode(&in); err != nil {
-		return 0
-	}
-
-	workdir := in.Cwd
-	if workdir == "" {
-		workdir = envOr("CLAUDE_PROJECT_DIR", ".")
-	}
-
-	files := []string{in.ToolInput.FilePath}
-	if args[0] == "codex" {
-		files = patchedFiles(commandText(in.ToolInput.Command))
-	}
-
-	lines := hookLines(workdir, files)
-	if len(lines) == 0 {
-		return 0
-	}
-
-	var out hookOutput
-
-	out.HookSpecificOutput.HookEventName = "PostToolUse"
-	out.HookSpecificOutput.AdditionalContext = "goozels (gooze mutation testing) diagnostics after this edit:\n" +
-		strings.Join(lines, "\n")
-
-	if err := json.NewEncoder(stdout).Encode(out); err != nil {
-		_, _ = fmt.Fprintf(stderr, "goozels: %v\n", err)
-	}
-
-	return 0
-}
-
-// hookLines checks each file (relative paths resolve against workdir) and caps
-// the combined output at maxHookLines.
-func hookLines(workdir string, files []string) []string {
-	checker := newChecker()
-
-	var lines []string
-
-	for _, f := range files {
-		if f == "" {
-			continue
-		}
-
-		if !filepath.IsAbs(f) {
-			f = filepath.Join(workdir, f)
-		}
-
-		found, err := checkFile(checker, workdir, f)
-		if err == nil {
-			lines = append(lines, found...)
-		}
-	}
-
-	if extra := len(lines) - maxHookLines; extra > 0 {
-		lines = append(lines[:maxHookLines], "… "+strconv.Itoa(extra)+" more; run `goozels check` on the file for all of them")
-	}
-
-	return lines
-}
-
-// commandText decodes tool_input.command, which is a string for apply_patch and
-// may be a string or an argv array for shell tools.
-func commandText(raw json.RawMessage) string {
-	var text string
-	if json.Unmarshal(raw, &text) == nil {
-		return text
-	}
-
-	var argv []string
-	if json.Unmarshal(raw, &argv) == nil {
-		return strings.Join(argv, "\n")
-	}
-
-	return ""
-}
-
-// patchedFiles lists, in order and without duplicates, the files an apply_patch
-// envelope adds, updates or moves to.
-func patchedFiles(patch string) []string {
-	var files []string
-
-	seen := map[string]bool{}
-
-	for line := range strings.SplitSeq(patch, "\n") {
-		for _, marker := range patchFileMarkers {
-			if f, ok := strings.CutPrefix(strings.TrimSpace(line), marker); ok && !seen[f] {
-				seen[f] = true
-
-				files = append(files, f)
-			}
-		}
-	}
-
-	return files
 }

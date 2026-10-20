@@ -17,6 +17,13 @@ type Deps struct {
 	Documents Documents
 	Reports   report.Reader
 	Config    config.Registry
+	Files     FileReader
+}
+
+// FileReader reads files from disk, such as the test files whose changes make
+// gooze's results out of date. Implemented by adapter/osfs.FS.
+type FileReader interface {
+	ReadFile(name string) ([]byte, error)
 }
 
 // GoozeRunner executes gooze subcommands. It is the port the controller depends

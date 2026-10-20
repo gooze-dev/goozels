@@ -69,3 +69,44 @@ func TestGoFileLenses(t *testing.T) {
 		t.Error("no gooze.run lens produced")
 	}
 }
+
+func TestPackagePattern(t *testing.T) {
+	for _, c := range []struct{ workdir, file, want string }{
+		{"/w", "/w/internal/domain/ignore.go", "./internal/domain"},
+		{"/w", "/w/main.go", "."},
+		{"/w", "/elsewhere/x.go", "./..."},
+		{"/w", "/w/../x.go", "./..."},
+	} {
+		if got := PackagePattern(c.workdir, c.file); got != c.want {
+			t.Errorf("PackagePattern(%q, %q) = %q, want %q", c.workdir, c.file, got, c.want)
+		}
+	}
+	if got := RunCommandLine("./calc"); got != "gooze run ./calc" {
+		t.Errorf("RunCommandLine = %q", got)
+	}
+}
+
+func TestLensTitlesArePlain(t *testing.T) {
+	for _, l := range GoFileLenses(".") {
+		if !strings.HasPrefix(l.Command.Title, "gooze: ") {
+			t.Errorf("lens title %q should be plain text starting with \"gooze: \"", l.Command.Title)
+		}
+	}
+}
+
+func TestPackagePatternOddNames(t *testing.T) {
+	// "-x" and "+x" sort below ".", "~x" above it.
+	for _, dir := range []string{"-x", "+x", "~x"} {
+		if got := PackagePattern("/w", "/w/"+dir+"/a.go"); got != "./"+dir {
+			t.Errorf("PackagePattern for %s = %q, want ./%s", dir, got, dir)
+		}
+	}
+}
+
+func TestGoFileLensesAtTopOfFile(t *testing.T) {
+	for _, l := range GoFileLenses(".") {
+		if l.Range.Start.Line != 0 || l.Range.Start.Column != 0 || l.Range.End.Line != 0 || l.Range.End.Column != 0 {
+			t.Errorf("lens %q range = %+v, want the start of the file", l.Command.Title, l.Range)
+		}
+	}
+}

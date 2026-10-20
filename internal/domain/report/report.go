@@ -11,8 +11,79 @@ import (
 
 	rpt "gooze.dev/pkg/gooze/pkg/report"
 
+	"gooze.dev/pkg/goozels/internal/domain/document"
 	"gooze.dev/pkg/goozels/internal/model"
 )
+
+// Current is a source file as it is now, to compare with what gooze tested.
+type Current struct {
+	// Text is the source file's contents now.
+	Text string
+	// Tests holds the contents now of the files TestFiles names, by absolute
+	// path. A missing entry means the file does not exist (or is unreadable);
+	// a nil map skips comparing tests.
+	Tests map[string]string
+	// Rerun is the command that refreshes the results, e.g. "gooze run ./calc".
+	Rerun string
+}
+
+// Diagnostics returns the diagnostics gooze's reports yield for the Go file at
+// absPath, or nil when no report names it. The first is a top-of-file summary;
+// when the file or its tests changed since gooze ran, it says so instead and
+// gives the rerun command. Then comes one marker per line with surviving or
+// uncovered mutants, in line order. Markers of a changed file are kept only
+// where the line still reads as gooze tested it, so none points at the wrong
+// line.
+func Diagnostics(reports []rpt.Report, workdir, absPath string, cur Current) []model.Diagnostic {
+	rep := ForFile(reports, workdir, absPath)
+	// Equivalent: a length is never negative, so <= 0 is == 0.
+	if len(rep) == 0 { //gooze:ignore comparison
+		return nil
+	}
+
+	hash := hashOf(cur.Text)
+	lines := document.Lines(cur.Text)
+	keep := func(r rpt.Report, c change) bool {
+		return sourceFresh(r, hash) || (c.line < len(lines) && lines[c.line] == c.text)
+	}
+
+	survivors := survivorDiagnostics(rep, keep)
+	// Equivalent: only the slice's initial capacity changes.
+	diags := make([]model.Diagnostic, 0, len(survivors)+1) //gooze:ignore arithmetic,numbers
+	diags = append(diags, headDiagnostic(rep, workdir, absPath, cur))
+
+	return append(diags, survivors...)
+}
+
+// headDiagnostic is the summary, or the stale notice when the source or its
+// tests changed since the run.
+func headDiagnostic(rep []rpt.Report, workdir, absPath string, cur Current) model.Diagnostic {
+	d := SummaryDiagnostic(rep)
+
+	switch state, changed := freshness(rep, workdir, absPath, cur); state {
+	case SourceChanged:
+		d.Message = staleMessage("results are from before "+filepath.Base(absPath)+" changed", rep, cur.Rerun)
+		d.Severity = model.SeverityWarning
+	case TestChanged:
+		d.Message = staleMessage("tests changed since the last run ("+filepath.Base(changed)+")", rep, cur.Rerun)
+		d.Severity = model.SeverityWarning
+	case Fresh:
+	}
+
+	return d
+}
+
+// staleMessage says why results may be out of date, the score they gave and
+// how to refresh them.
+func staleMessage(why string, rep []rpt.Report, rerun string) string {
+	msg := "gooze: " + why + "; score then " + percent(Summarize(rep))
+	// Equivalent: no string sorts below "", so > "" is != "".
+	if rerun != "" { //gooze:ignore comparison
+		msg += "; rerun: " + rerun
+	}
+
+	return msg
+}
 
 // ForFile returns the reports whose origin is the Go file at absPath: its
 // FullPath, or its ShortPath relative to workdir, names that file.
@@ -36,17 +107,10 @@ func SourcesForTest(reports []rpt.Report, workdir, absPath string) []string {
 	seen := map[string]bool{}
 
 	for _, r := range reports {
-		origin := r.Source.Origin
-		if origin == nil || !names(r.Source.Test, workdir, absPath) {
-			continue
+		if r.Source.Origin != nil && names(r.Source.Test, workdir, absPath) {
+			// Equivalent: only the map's keys are read.
+			seen[resolve(r.Source.Origin, workdir)] = true //gooze:ignore boolean
 		}
-
-		src := origin.FullPath
-		if origin.ShortPath != "" {
-			src = filepath.Join(workdir, origin.ShortPath)
-		}
-
-		seen[src] = true
 	}
 
 	sources := make([]string, 0, len(seen))
@@ -59,6 +123,33 @@ func SourcesForTest(reports []rpt.Report, workdir, absPath string) []string {
 	return sources
 }
 
+// Matching returns the reports whose origin lies in the packages a gooze path
+// pattern selects, relative to workdir: "./..." is every report, "./pkg/..."
+// pkg and the packages below it, "./pkg" only pkg.
+func Matching(reports []rpt.Report, workdir, pattern string) []rpt.Report {
+	dir, recursive := strings.CutSuffix(filepath.ToSlash(pattern), "/...")
+	if dir == "..." {
+		dir, recursive = ".", true
+	}
+
+	dir = filepath.Clean(filepath.Join(workdir, dir))
+
+	var matched []rpt.Report
+
+	for _, r := range reports {
+		if r.Source.Origin == nil {
+			continue
+		}
+
+		srcDir := filepath.Dir(resolve(r.Source.Origin, workdir))
+		if srcDir == dir || (recursive && strings.HasPrefix(srcDir, dir+string(filepath.Separator))) {
+			matched = append(matched, r)
+		}
+	}
+
+	return matched
+}
+
 // names reports whether f is the file at absPath, by FullPath or by ShortPath
 // relative to workdir.
 func names(f *rpt.File, workdir, absPath string) bool {
@@ -66,7 +157,19 @@ func names(f *rpt.File, workdir, absPath string) bool {
 		return false
 	}
 
-	return f.FullPath == absPath || (f.ShortPath != "" && filepath.Join(workdir, f.ShortPath) == absPath)
+	// Equivalent: no string sorts below "", so > "" is != "" (the other comparisons are killed by tests).
+	return f.FullPath == absPath || (f.ShortPath != "" && filepath.Join(workdir, f.ShortPath) == absPath) //gooze:ignore comparison
+}
+
+// resolve returns the local path of a report file: its ShortPath under
+// workdir when recorded, otherwise its FullPath.
+func resolve(f *rpt.File, workdir string) string {
+	// Equivalent: no string sorts below "", so > "" is != "" (>= "" is killed by a test).
+	if f.ShortPath != "" { //gooze:ignore comparison
+		return filepath.Join(workdir, f.ShortPath)
+	}
+
+	return f.FullPath
 }
 
 // Summarize counts the mutation results of every report.
@@ -80,14 +183,37 @@ func Summarize(reports []rpt.Report) rpt.Summary {
 	return s
 }
 
-// Message is a one-line human summary for an editor diagnostic.
-func Message(s rpt.Summary) string {
-	msg := "gooze: " + strconv.Itoa(s.Survived) + "/" + strconv.Itoa(s.Total) + " mutants survived"
-	if s.NotCovered > 0 {
-		msg += ", " + strconv.Itoa(s.NotCovered) + " not covered"
+// ScoreText leads with the mutation score, then counts the outcomes that
+// occurred: "score 67.65% — 69 killed, 32 survived, 1 not covered by any test".
+func ScoreText(s rpt.Summary) string {
+	parts := []string{strconv.Itoa(s.Killed) + " killed"}
+
+	for _, c := range []struct {
+		n    int
+		what string
+	}{
+		{s.Survived, "survived"},
+		{s.NotCovered, "not covered by any test"},
+		{s.Timeout, "timed out"},
+		{s.Error, "errored"},
+		{s.Skipped, "skipped"},
+	} {
+		// Equivalent: counts are never negative, so != 0 is > 0.
+		if c.n > 0 { //gooze:ignore comparison
+			parts = append(parts, strconv.Itoa(c.n)+" "+c.what)
+		}
 	}
 
-	return msg + " — score " + strconv.FormatFloat(s.Score()*100, 'f', 2, 64) + "%"
+	return "score " + percent(s) + " — " + strings.Join(parts, ", ")
+}
+
+// Message is a one-line human summary for an editor diagnostic.
+func Message(s rpt.Summary) string {
+	return "gooze: " + ScoreText(s)
+}
+
+func percent(s rpt.Summary) string {
+	return strconv.FormatFloat(s.Score()*100, 'f', 2, 64) + "%"
 }
 
 // SummaryDiagnostic returns a top-of-file diagnostic summarizing the reports.
@@ -97,7 +223,8 @@ func SummaryDiagnostic(reports []rpt.Report) model.Diagnostic {
 	s := Summarize(reports)
 	severity := model.SeverityInfo
 
-	if s.Survived+s.NotCovered > 0 {
+	// Equivalent: counts are never negative, so != 0 is > 0.
+	if s.Survived+s.NotCovered > 0 { //gooze:ignore comparison
 		severity = model.SeverityWarning
 	}
 
@@ -105,159 +232,14 @@ func SummaryDiagnostic(reports []rpt.Report) model.Diagnostic {
 		Range:    topOfFile,
 		Severity: severity,
 		Message:  Message(s),
-		Source:   "gooze",
+		Source:   source,
 	}
 }
 
-// SurvivorDiagnostics marks the original source line each surviving or
-// uncovered mutant changed, read from the report's unified diff, and says which
-// change the tests missed. Positions refer to the source as gooze tested it, so
-// they drift if the file has been edited since the run.
-func SurvivorDiagnostics(reports []rpt.Report) []model.Diagnostic {
-	var diags []model.Diagnostic
-
-	seen := map[model.Diagnostic]bool{}
-
-	for _, r := range reports {
-		for _, d := range reportSurvivors(r) {
-			if !seen[d] {
-				seen[d] = true
-
-				diags = append(diags, d)
-			}
-		}
-	}
-
-	return diags
-}
-
-// reportSurvivors marks the changed lines of one report for each of its
-// surviving or uncovered mutations.
-func reportSurvivors(r rpt.Report) []model.Diagnostic {
-	if r.Diff == nil {
-		return nil
-	}
-
-	var (
-		diags   []model.Diagnostic
-		changes = diffChanges(string(*r.Diff))
-	)
-
-	for _, res := range r.Result {
-		for _, mu := range res.Mutations {
-			if mu.Status != rpt.Survived && mu.Status != rpt.NotCovered {
-				continue
-			}
-
-			for _, c := range changes {
-				diags = append(diags, survivorDiagnostic(res.Name, mu.Status, c))
-			}
-		}
-	}
-
-	return diags
-}
-
-func survivorDiagnostic(mutagen string, status rpt.TestStatus, c change) model.Diagnostic {
-	return model.Diagnostic{
-		Range: model.Range{
-			Start: model.Position{Line: c.line, Column: c.indent},
-			End:   model.Position{Line: c.line, Column: c.end},
-		},
-		Severity: model.SeverityWarning,
-		Message:  survivorMessage(mutagen, status, c.mutated),
-		Source:   "gooze",
-	}
-}
-
-// survivorMessage tells the reader which change the tests failed to detect.
-func survivorMessage(mutagen string, status rpt.TestStatus, mutated string) string {
-	name := "mutant"
-	if mutagen != "" {
-		name = mutagen + " mutant"
-	}
-
-	edit := "with this line removed"
-	if mutated != "" {
-		edit = "with: " + mutated
-	}
-
-	if status == rpt.NotCovered {
-		return "gooze: " + name + " not covered by any test — nothing fails " + edit
-	}
-
-	return "gooze: surviving " + name + " — tests still pass " + edit
-}
+// source labels every diagnostic derived from gooze reports.
+const source = "gooze"
 
 var topOfFile = model.Range{
 	Start: model.Position{Line: 0, Column: 0},
 	End:   model.Position{Line: 0, Column: 0},
-}
-
-// change is one original line a mutation replaced or removed.
-type change struct {
-	line    int    // zero-based line in the original source
-	indent  int    // byte column where the line's code starts
-	end     int    // byte column where the line ends
-	mutated string // replacement text, trimmed; empty when the line was removed
-}
-
-// diffChanges extracts the original lines a unified diff ("--- original",
-// "+++ mutated", "@@ -a,b +c,d @@" hunks) removes, pairing each with the added
-// line that replaced it. gooze's hunks carry three lines of context, so the
-// changed line is not the hunk's first line.
-func diffChanges(diff string) []change {
-	var (
-		changes []change
-		old     = -1 // next original line (one-based); -1 until the first hunk
-		pending = 0  // index into changes of the first unpaired removal
-	)
-
-	for l := range strings.SplitSeq(diff, "\n") {
-		switch {
-		case strings.HasPrefix(l, "@@"):
-			old = hunkOldStart(l)
-			pending = len(changes)
-		case old < 0 || strings.HasPrefix(l, "\\"):
-			// File headers before the first hunk and "\ No newline at end of file".
-		case strings.HasPrefix(l, "-"):
-			changes = append(changes, removedLine(old-1, l[1:]))
-			old++
-		case strings.HasPrefix(l, "+"):
-			if pending < len(changes) {
-				changes[pending].mutated = strings.TrimSpace(l[1:])
-				pending++
-			}
-		default: // context line (" text", or "" for a blank line)
-			old++
-			pending = len(changes)
-		}
-	}
-
-	return changes
-}
-
-func removedLine(line int, text string) change {
-	indent := len(text) - len(strings.TrimLeft(text, " \t"))
-
-	return change{line: max(line, 0), indent: indent, end: len(text)}
-}
-
-// hunkOldStart returns the one-based original start line from a hunk header
-// ("@@ -a,b +c,d @@"), or -1 when the header is malformed.
-func hunkOldStart(header string) int {
-	_, after, ok := strings.Cut(header, "-")
-	if !ok {
-		return -1
-	}
-
-	num, _, _ := strings.Cut(after, " ")
-	num, _, _ = strings.Cut(num, ",")
-
-	n, err := strconv.Atoi(num)
-	if err != nil || n < 1 {
-		return -1
-	}
-
-	return n
 }

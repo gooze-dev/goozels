@@ -77,13 +77,13 @@ func TestLSPCodeLenses(t *testing.T) {
 	lines := []string{"package main"}
 	ls := []model.CodeLens{{
 		Range:   model.Range{Start: model.Position{Line: 0, Column: 0}, End: model.Position{Line: 0, Column: 0}},
-		Command: model.Command{Title: "▶ gooze run", Command: "gooze.run", Arguments: []any{"./..."}},
+		Command: model.Command{Title: "gooze: run package", Command: "gooze.run", Arguments: []any{"./..."}},
 	}}
 	got := lspCodeLenses(lines, ls)
 	if len(got) != 1 || got[0].Command == nil {
 		t.Fatalf("code lenses = %+v", got)
 	}
-	if got[0].Command.Command != "gooze.run" || got[0].Command.Title != "▶ gooze run" {
+	if got[0].Command.Command != "gooze.run" || got[0].Command.Title != "gooze: run package" {
 		t.Errorf("command = %+v", got[0].Command)
 	}
 }
