@@ -165,3 +165,65 @@ func labels(items []model.CompletionItem) []string {
 	}
 	return out
 }
+
+// goozeRepoConfig is gooze's own gooze.yaml with the typo that made gooze ignore
+// the whole file: "run:r" is a plain scalar in YAML, not the key "run".
+const goozeRepoConfig = `log:
+    level: 0
+output: .gooze-reports
+paths:
+    exclude: []
+run:r
+    mutation_timeout: 120
+    parallel: 1
+version: 1
+`
+
+func TestDiagnoseMissingSpaceAfterColon(t *testing.T) {
+	diags := newEditor().Diagnose(goozeRepoConfig)
+	if len(diags) != 1 {
+		t.Fatalf("got %d diagnostics, want exactly 1 (children of the broken line are not re-reported): %+v", len(diags), diags)
+	}
+	d := diags[0]
+	if d.Range.Start.Line != 5 || d.Severity != model.SeverityError || !strings.Contains(d.Message, "missing a space after") {
+		t.Errorf("diagnostic = %+v", d)
+	}
+	if d.Range.Start.Column != 0 || d.Range.End.Column != len("run:r") {
+		t.Errorf("range = %+v, want the whole \"run:r\" token", d.Range)
+	}
+}
+
+func TestDiagnoseSectionWithScalarValue(t *testing.T) {
+	diags := newEditor().Diagnose("run: fast\n")
+	if len(diags) != 1 || !strings.Contains(diags[0].Message, "is a section") {
+		t.Fatalf("diagnostics = %+v", diags)
+	}
+	if got := newEditor().Diagnose("run: {parallel: 4}\n"); len(got) != 0 {
+		t.Errorf("flow mapping should be accepted, got %+v", got)
+	}
+}
+
+func TestDiagnoseLineWithoutColon(t *testing.T) {
+	diags := newEditor().Diagnose("output: .gooze-reports\njunk\n")
+	if len(diags) != 1 || diags[0].Range.Start.Line != 1 || !strings.Contains(diags[0].Message, "not a valid") {
+		t.Fatalf("diagnostics = %+v", diags)
+	}
+}
+
+func TestParseEntryColonRules(t *testing.T) {
+	cases := []struct {
+		line, key, value string
+		ok               bool
+	}{
+		{"output: a:b", "output", "a:b", true}, // later colons belong to the value
+		{"run:", "run", "", true},              // key with nested lines below
+		{"run:r", "", "", false},               // plain scalar, not a key
+		{"url: http://x", "url", "http://x", true},
+	}
+	for _, c := range cases {
+		e, ok := parseEntry(0, c.line)
+		if ok != c.ok || e.key != c.key || e.value != c.value {
+			t.Errorf("parseEntry(%q) = %q, %q, %v; want %q, %q, %v", c.line, e.key, e.value, ok, c.key, c.value, c.ok)
+		}
+	}
+}

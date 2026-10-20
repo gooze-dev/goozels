@@ -83,25 +83,80 @@ func TestSummaryDiagnosticSeverity(t *testing.T) {
 	}
 }
 
-func TestSurvivorDiagnostics(t *testing.T) {
-	reports := append(sample(),
-		newReport("x.go", hunk, rpt.Survived),
-		newReport("x.go", strings.Replace(hunk, "+10,3", "+20,3", 1), rpt.NotCovered),
-		newReport("x.go", strings.Replace(hunk, "+10,3", "+30,3", 1), rpt.Timeout),
-	)
+// realDiff is a unified diff as gooze stores it for a mutant: three lines of
+// context, so the hunk starts three lines before the mutated line. gooze writes
+// blank context lines as " "; editors strip that trailing space here, and
+// diffChanges treats both forms alike.
+const realDiff = `--- original
++++ mutated
+@@ -205,7 +205,7 @@
+ }
+
+ func isLeadingComment(line int, slashOffset int, lineStarts []int, content []byte) bool {
+-	if line <= 0 || line > len(lineStarts) {
++	if line == 0 || line > len(lineStarts) {
+ 		return false
+ 	}
+
+`
+
+func withName(r rpt.Report, name string) rpt.Report {
+	r.Result[0].Name = name
+	return r
+}
+
+func TestSurvivorDiagnosticsMarksMutatedLine(t *testing.T) {
+	reports := []rpt.Report{
+		withName(newReport("x.go", realDiff, rpt.Survived), "comparison"),
+		withName(newReport("x.go", realDiff, rpt.Killed), "comparison"),
+	}
+
 	diags := SurvivorDiagnostics(reports)
-	if len(diags) != 2 {
-		t.Fatalf("expected 2 diagnostics, got %+v", diags)
+	if len(diags) != 1 {
+		t.Fatalf("expected 1 survivor diagnostic (killed mutants are not marked), got %d", len(diags))
 	}
-	if diags[0].Range.Start.Line != 9 || !strings.Contains(diags[0].Message, "surviving mutant") {
-		t.Errorf("survivor diagnostic = %+v, want line 9", diags[0])
+
+	d := diags[0]
+	if d.Range.Start.Line != 207 { // the "-" line is 1-based 208, not the hunk start 205
+		t.Errorf("line = %d, want 207", d.Range.Start.Line)
 	}
-	if diags[1].Range.Start.Line != 19 || !strings.Contains(diags[1].Message, "not covered") {
-		t.Errorf("not-covered diagnostic = %+v, want line 19", diags[1])
+	if d.Range.Start.Column != 1 || d.Range.End.Column != len("\tif line <= 0 || line > len(lineStarts) {") {
+		t.Errorf("columns = %d..%d, want the code after the tab", d.Range.Start.Column, d.Range.End.Column)
+	}
+	want := "gooze: surviving comparison mutant — tests still pass with: if line == 0 || line > len(lineStarts) {"
+	if d.Message != want {
+		t.Errorf("message = %q\nwant      %q", d.Message, want)
+	}
+}
+
+func TestSurvivorDiagnosticsNotCoveredAndRemoval(t *testing.T) {
+	removal := "--- original\n+++ mutated\n@@ -3,3 +3,2 @@\n a()\n-\tb()\n c()\n"
+	reports := []rpt.Report{
+		withName(newReport("x.go", removal, rpt.NotCovered), "statement"),
+		newReport("x.go", hunk, rpt.Timeout),
+	}
+
+	diags := SurvivorDiagnostics(reports)
+	if len(diags) != 1 || diags[0].Range.Start.Line != 3 {
+		t.Fatalf("diags = %+v, want one marker on 0-based line 3 (timeouts are not marked)", diags)
+	}
+	if !strings.Contains(diags[0].Message, "not covered by any test") || !strings.Contains(diags[0].Message, "line removed") {
+		t.Errorf("message = %q", diags[0].Message)
 	}
 
 	clean := []rpt.Report{newReport("x.go", hunk, rpt.Killed)}
 	if got := SurvivorDiagnostics(clean); got != nil {
 		t.Errorf("expected nil for clean report, got %v", got)
+	}
+}
+
+func TestDiffChangesMultipleHunksAndBlankContext(t *testing.T) {
+	diff := "--- original\n+++ mutated\n@@ -1,3 +1,3 @@\n a\n-b\n+B\n\n@@ -10,2 +10,2 @@\n-x\n+X\n y\n\\ No newline at end of file\n"
+	got := diffChanges(diff)
+	if len(got) != 2 || got[0].line != 1 || got[0].mutated != "B" || got[1].line != 9 || got[1].mutated != "X" {
+		t.Errorf("changes = %+v", got)
+	}
+	if diffChanges("") != nil || diffChanges("@@ garbage @@\n-x\n") != nil {
+		t.Error("empty or malformed diffs should yield no changes")
 	}
 }

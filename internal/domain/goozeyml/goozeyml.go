@@ -27,6 +27,9 @@ func New(registry config.Registry) Editor {
 	return Editor{registry: registry}
 }
 
+// source labels every diagnostic goozels reports for gooze config files.
+const source = "gooze"
+
 // entry is a parsed "key: value" mapping line.
 type entry struct {
 	line       int
@@ -64,7 +67,7 @@ func parseEntry(lineNum int, line string) (entry, bool) {
 		return entry{}, false
 	}
 
-	colon := strings.IndexByte(rest, ':')
+	colon := separatorColon(rest)
 	if colon < 0 {
 		return entry{}, false
 	}
@@ -229,17 +232,48 @@ func (ed Editor) Hover(text string, lineNum, col int) (model.Hover, bool) {
 	}, true
 }
 
-// Diagnose validates the whole config document: unknown keys and bad scalar values.
+// separatorColon returns the index of the colon that ends a mapping key: in
+// YAML a colon separates key from value only when followed by whitespace or the
+// end of the line, so "run:r" is a plain scalar, not the key "run". It returns
+// -1 when the text has no such colon.
+func separatorColon(text string) int {
+	for i := range len(text) {
+		if text[i] == ':' && (i+1 == len(text) || text[i+1] == ' ' || text[i+1] == '\t') {
+			return i
+		}
+	}
+
+	return -1
+}
+
+// Diagnose validates the whole config document: malformed lines, unknown keys
+// and bad scalar values.
 func (ed Editor) Diagnose(text string) []model.Diagnostic {
 	lines := document.Lines(text)
-	entries := parseEntries(lines)
 
 	var (
-		diags []model.Diagnostic
-		stack []entry
+		diags  []model.Diagnostic
+		stack  []entry
+		broken = -1 // indent of the last malformed line; deeper lines are its children
 	)
 
-	for _, e := range entries {
+	for i, line := range lines {
+		e, ok := parseEntry(i, line)
+		if !ok {
+			if d, bad := malformedLine(i, line); bad {
+				diags = append(diags, d)
+				broken = d.Range.Start.Column
+			}
+
+			continue
+		}
+
+		if broken >= 0 && e.indent > broken {
+			continue // the parent is unreadable, so this key's path is unknown
+		}
+
+		broken = -1
+
 		for len(stack) > 0 && stack[len(stack)-1].indent >= e.indent {
 			stack = stack[:len(stack)-1]
 		}
@@ -247,36 +281,71 @@ func (ed Editor) Diagnose(text string) []model.Diagnostic {
 		path := entryPath(stack, e)
 		stack = append(stack, e)
 
-		f, ok := ed.lookup(path)
-		if !ok {
-			diags = append(diags, model.Diagnostic{
-				Range:    keyRange(e),
-				Severity: model.SeverityWarning,
-				Message:  "unknown gooze config key \"" + strings.Join(path, ".") + "\"",
-				Source:   "gooze",
-			})
-
-			continue
-		}
-
-		if e.value == "" {
-			continue
-		}
-
-		if msg := validateScalar(f, stripQuotes(e.value)); msg != "" {
-			diags = append(diags, model.Diagnostic{
-				Range: model.Range{
-					Start: model.Position{Line: e.line, Column: e.valueStart},
-					End:   model.Position{Line: e.line, Column: len(lines[e.line])},
-				},
-				Severity: model.SeverityError,
-				Message:  "invalid value for \"" + strings.Join(path, ".") + "\": " + msg,
-				Source:   "gooze",
-			})
+		if d, bad := ed.diagnoseEntry(lines, path, e); bad {
+			diags = append(diags, d)
 		}
 	}
 
 	return diags
+}
+
+// diagnoseEntry checks one mapping entry against the config schema.
+func (ed Editor) diagnoseEntry(lines []string, path []string, e entry) (model.Diagnostic, bool) {
+	f, ok := ed.lookup(path)
+	if !ok {
+		return model.Diagnostic{
+			Range:    keyRange(e),
+			Severity: model.SeverityWarning,
+			Message:  "unknown gooze config key \"" + strings.Join(path, ".") + "\"",
+			Source:   source,
+		}, true
+	}
+
+	if e.value == "" {
+		return model.Diagnostic{}, false
+	}
+
+	msg := validateScalar(f, stripQuotes(e.value))
+	if msg == "" {
+		return model.Diagnostic{}, false
+	}
+
+	return model.Diagnostic{
+		Range: model.Range{
+			Start: model.Position{Line: e.line, Column: e.valueStart},
+			End:   model.Position{Line: e.line, Column: len(lines[e.line])},
+		},
+		Severity: model.SeverityError,
+		Message:  "invalid value for \"" + strings.Join(path, ".") + "\": " + msg,
+		Source:   source,
+	}, true
+}
+
+// malformedLine reports a non-blank line that is neither a comment, a list item
+// nor a "key: value" entry. gooze cannot parse such a file and falls back to its
+// defaults for every setting, so this is an error.
+func malformedLine(lineNum int, line string) (model.Diagnostic, bool) {
+	trimmed := strings.TrimLeft(line, " ")
+	if strings.TrimSpace(trimmed) == "" || trimmed[0] == '#' || trimmed[0] == '-' {
+		return model.Diagnostic{}, false
+	}
+
+	indent := len(line) - len(trimmed)
+	msg := "not a valid \"key: value\" line; gooze will ignore this whole file and use its defaults"
+
+	if strings.Contains(trimmed, ":") {
+		msg = "missing a space after \":\"; gooze will ignore this whole file and use its defaults"
+	}
+
+	return model.Diagnostic{
+		Range: model.Range{
+			Start: model.Position{Line: lineNum, Column: indent},
+			End:   model.Position{Line: lineNum, Column: len(strings.TrimRight(line, " \t"))},
+		},
+		Severity: model.SeverityError,
+		Message:  msg,
+		Source:   source,
+	}, true
 }
 
 // entryPath is the dotted key path of e under its enclosing mapping entries.
@@ -348,8 +417,8 @@ func (ed Editor) childrenAt(path []string) []config.Field {
 }
 
 // validateScalar checks a raw (unquoted, trimmed) scalar value against a field's
-// kind, returning a human-readable problem or "" when valid. Objects, strings
-// and lists are not validated.
+// kind, returning a human-readable problem or "" when valid. Strings and lists
+// are not validated.
 func validateScalar(f config.Field, raw string) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -367,7 +436,13 @@ func validateScalar(f config.Field, raw string) string {
 		}
 	case config.KindEnum:
 		return validateEnum(f, raw)
-	case config.KindObject, config.KindString, config.KindStringList:
+	case config.KindObject:
+		// A flow mapping ("run: {parallel: 4}") is valid YAML; anything else
+		// replaces the section's settings with a plain value.
+		if !strings.HasPrefix(raw, "{") {
+			return "is a section; put its settings on indented lines below it"
+		}
+	case config.KindString, config.KindStringList:
 	}
 
 	return ""

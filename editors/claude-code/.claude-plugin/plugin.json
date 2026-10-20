@@ -1,0 +1,9 @@
+{
+  "name": "goozels-lsp",
+  "version": "0.2.0",
+  "description": "Extends Claude Code's Go support with gooze mutation testing: mutation scores, surviving-mutant markers and //gooze:ignore checks after every Go edit, plus gooze.yaml validation. Works alongside the official gopls-lsp plugin.",
+  "author": {
+    "name": "gooze-dev",
+    "url": "https://github.com/gooze-dev"
+  }
+}

@@ -96,8 +96,8 @@ func TestReportDiagnosticsPublished(t *testing.T) {
 	var summary, survivor, notCovered bool
 	for _, d := range pd.Diagnostics {
 		summary = summary || d.Message == "gooze: 3/16 mutants survived, 6 not covered — score 43.75%"
-		survivor = survivor || strings.Contains(d.Message, "surviving mutant")
-		notCovered = notCovered || strings.Contains(d.Message, "not covered by tests")
+		survivor = survivor || d.Message == "gooze: surviving comparison mutant — tests still pass with: return n >= 0"
+		notCovered = notCovered || d.Message == "gooze: arithmetic mutant not covered by any test — nothing fails with: return n - 2"
 	}
 	if !summary || !survivor || !notCovered {
 		t.Errorf("expected summary, survivor and not-covered diagnostics, got %+v", pd.Diagnostics)

@@ -17,7 +17,7 @@ repos:
   - id: yamlfmt
     args: [--mapping, '2', --sequence, '2', --offset, '0']
     # Test fixtures are inputs; keep them byte-for-byte.
-    exclude: ^testdata/
+    exclude: (^|/)testdata/
 
 - repo: local
   hooks:

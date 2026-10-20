@@ -3,15 +3,11 @@ package controller
 import (
 	"context"
 	"encoding/json"
-	"path/filepath"
 	"strings"
 	"time"
 
-	"gooze.dev/pkg/gooze/pkg/config"
-
 	"gooze.dev/pkg/goozels/internal/domain/command"
 	"gooze.dev/pkg/goozels/internal/domain/document"
-	"gooze.dev/pkg/goozels/internal/domain/report"
 	"gooze.dev/pkg/goozels/internal/model"
 	"gooze.dev/pkg/goozels/pkg/jsonrpc"
 	"gooze.dev/pkg/goozels/pkg/lsp"
@@ -157,26 +153,10 @@ func (s *Server) refreshReports() {
 	}
 }
 
-// reportDiagnostics returns gooze report-derived diagnostics for a .go file: a
-// summary plus best-effort survivor markers. It returns nil when no report exists.
+// reportDiagnostics returns gooze report-derived diagnostics for an open .go
+// file. It returns nil when no report exists.
 func (s *Server) reportDiagnostics(uri string) []model.Diagnostic {
-	workdir := s.getWorkdir()
-
-	all, err := s.reports.ReadDir(filepath.Join(workdir, config.DefaultReportsDir))
-	if err != nil {
-		return nil
-	}
-
-	rep := report.ForFile(all, workdir, lsp.URIPath(uri))
-	if len(rep) == 0 {
-		return nil
-	}
-
-	survivors := report.SurvivorDiagnostics(rep)
-	diags := make([]model.Diagnostic, 0, len(survivors)+1)
-	diags = append(diags, report.SummaryDiagnostic(rep))
-
-	return append(diags, survivors...)
+	return reportDiagnostics(s.reports, s.getWorkdir(), lsp.URIPath(uri))
 }
 
 // workspaceRoot extracts the workspace root path from initialize params.

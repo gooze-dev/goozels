@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "^apply_patch$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "goozels hook codex",
+            "timeout": 60,
+            "statusMessage": "goozels check"
+          }
+        ]
+      }
+    ]
+  }
+}

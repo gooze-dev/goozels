@@ -72,32 +72,20 @@ func SummaryDiagnostic(reports []rpt.Report) model.Diagnostic {
 	}
 }
 
-// SurvivorDiagnostics is a best-effort mapping of surviving and not covered
-// mutants to source lines by parsing each report's unified diff. gooze does not
-// store per-mutant line positions, so these markers are approximate.
+// SurvivorDiagnostics marks the original source line each surviving or
+// uncovered mutant changed, read from the report's unified diff, and says which
+// change the tests missed. Positions refer to the source as gooze tested it, so
+// they drift if the file has been edited since the run.
 func SurvivorDiagnostics(reports []rpt.Report) []model.Diagnostic {
 	var diags []model.Diagnostic
 
 	seen := map[model.Diagnostic]bool{}
 
 	for _, r := range reports {
-		msg := survivorMessage(rpt.Summarize(r))
-		if msg == "" || r.Diff == nil {
-			continue
-		}
-
-		for _, line := range hunkLines(string(*r.Diff)) {
-			d := model.Diagnostic{
-				Range: model.Range{
-					Start: model.Position{Line: line, Column: 0},
-					End:   model.Position{Line: line, Column: 0},
-				},
-				Severity: model.SeverityWarning,
-				Message:  msg,
-				Source:   "gooze",
-			}
+		for _, d := range reportSurvivors(r) {
 			if !seen[d] {
 				seen[d] = true
+
 				diags = append(diags, d)
 			}
 		}
@@ -106,17 +94,62 @@ func SurvivorDiagnostics(reports []rpt.Report) []model.Diagnostic {
 	return diags
 }
 
-// survivorMessage describes the mutants of a report that tests missed, or ""
-// when there are none.
-func survivorMessage(s rpt.Summary) string {
-	switch {
-	case s.Survived > 0:
-		return "gooze: possible surviving mutant near here (approximate)"
-	case s.NotCovered > 0:
-		return "gooze: possible mutant not covered by tests near here (approximate)"
-	default:
-		return ""
+// reportSurvivors marks the changed lines of one report for each of its
+// surviving or uncovered mutations.
+func reportSurvivors(r rpt.Report) []model.Diagnostic {
+	if r.Diff == nil {
+		return nil
 	}
+
+	var (
+		diags   []model.Diagnostic
+		changes = diffChanges(string(*r.Diff))
+	)
+
+	for _, res := range r.Result {
+		for _, mu := range res.Mutations {
+			if mu.Status != rpt.Survived && mu.Status != rpt.NotCovered {
+				continue
+			}
+
+			for _, c := range changes {
+				diags = append(diags, survivorDiagnostic(res.Name, mu.Status, c))
+			}
+		}
+	}
+
+	return diags
+}
+
+func survivorDiagnostic(mutagen string, status rpt.TestStatus, c change) model.Diagnostic {
+	return model.Diagnostic{
+		Range: model.Range{
+			Start: model.Position{Line: c.line, Column: c.indent},
+			End:   model.Position{Line: c.line, Column: c.end},
+		},
+		Severity: model.SeverityWarning,
+		Message:  survivorMessage(mutagen, status, c.mutated),
+		Source:   "gooze",
+	}
+}
+
+// survivorMessage tells the reader which change the tests failed to detect.
+func survivorMessage(mutagen string, status rpt.TestStatus, mutated string) string {
+	name := "mutant"
+	if mutagen != "" {
+		name = mutagen + " mutant"
+	}
+
+	edit := "with this line removed"
+	if mutated != "" {
+		edit = "with: " + mutated
+	}
+
+	if status == rpt.NotCovered {
+		return "gooze: " + name + " not covered by any test — nothing fails " + edit
+	}
+
+	return "gooze: surviving " + name + " — tests still pass " + edit
 }
 
 var topOfFile = model.Range{
@@ -124,34 +157,70 @@ var topOfFile = model.Range{
 	End:   model.Position{Line: 0, Column: 0},
 }
 
-// hunkLines extracts zero-based new-file start lines from unified-diff hunk
-// headers ("@@ -a,b +c,d @@").
-func hunkLines(diff string) []int {
-	var lines []int
+// change is one original line a mutation replaced or removed.
+type change struct {
+	line    int    // zero-based line in the original source
+	indent  int    // byte column where the line's code starts
+	end     int    // byte column where the line ends
+	mutated string // replacement text, trimmed; empty when the line was removed
+}
+
+// diffChanges extracts the original lines a unified diff ("--- original",
+// "+++ mutated", "@@ -a,b +c,d @@" hunks) removes, pairing each with the added
+// line that replaced it. gooze's hunks carry three lines of context, so the
+// changed line is not the hunk's first line.
+func diffChanges(diff string) []change {
+	var (
+		changes []change
+		old     = -1 // next original line (one-based); -1 until the first hunk
+		pending = 0  // index into changes of the first unpaired removal
+	)
 
 	for l := range strings.SplitSeq(diff, "\n") {
-		if !strings.HasPrefix(l, "@@") {
-			continue
-		}
-
-		_, after, ok := strings.Cut(l, "+")
-		if !ok {
-			continue
-		}
-
-		num := after
-		if comma := strings.IndexByte(num, ','); comma >= 0 {
-			num = num[:comma]
-		}
-
-		if sp := strings.IndexByte(num, ' '); sp >= 0 {
-			num = num[:sp]
-		}
-
-		if n, err := strconv.Atoi(num); err == nil && n > 0 {
-			lines = append(lines, n-1)
+		switch {
+		case strings.HasPrefix(l, "@@"):
+			old = hunkOldStart(l)
+			pending = len(changes)
+		case old < 0 || strings.HasPrefix(l, "\\"):
+			// File headers before the first hunk and "\ No newline at end of file".
+		case strings.HasPrefix(l, "-"):
+			changes = append(changes, removedLine(old-1, l[1:]))
+			old++
+		case strings.HasPrefix(l, "+"):
+			if pending < len(changes) {
+				changes[pending].mutated = strings.TrimSpace(l[1:])
+				pending++
+			}
+		default: // context line (" text", or "" for a blank line)
+			old++
+			pending = len(changes)
 		}
 	}
 
-	return lines
+	return changes
+}
+
+func removedLine(line int, text string) change {
+	indent := len(text) - len(strings.TrimLeft(text, " \t"))
+
+	return change{line: max(line, 0), indent: indent, end: len(text)}
+}
+
+// hunkOldStart returns the one-based original start line from a hunk header
+// ("@@ -a,b +c,d @@"), or -1 when the header is malformed.
+func hunkOldStart(header string) int {
+	_, after, ok := strings.Cut(header, "-")
+	if !ok {
+		return -1
+	}
+
+	num, _, _ := strings.Cut(after, " ")
+	num, _, _ = strings.Cut(num, ",")
+
+	n, err := strconv.Atoi(num)
+	if err != nil || n < 1 {
+		return -1
+	}
+
+	return n
 }

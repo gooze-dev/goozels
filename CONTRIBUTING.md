@@ -32,10 +32,10 @@ controller's ports (`internal/controller/ports.go`) and are wired in `cmd`:
 | model | `internal/model` | LSP-agnostic result types (positions, completions, diagnostics, commands) |
 | domain | `internal/domain/{command,report,document}` | command/code-lens definitions, report diagnostics, line splitting; the mutagen registry, `gooze:ignore` parser, config schema and report files come from gooze's `gooze.dev/pkg/gooze/pkg/{mutagen,directive,config,report}` |
 | domain | `internal/domain/{ignore,goozeyml}` | feature logic: completion / hover / diagnostics |
-| adapter | `internal/adapter/{docstore,gopls,goozecli}` | open-document store, gopls subprocess, gooze CLI runner |
-| controller | `internal/controller` | the proxy engine: routing, augmentation, diagnostics merge, model↔LSP mapping |
+| adapter | `internal/adapter/{docstore,gopls,goozecli,reportcache}` | open-document store, gopls subprocess, gooze CLI runner, cache in front of gooze's report reader |
+| controller | `internal/controller` | the proxy engine: routing, augmentation, diagnostics merge, model↔LSP mapping; `Checker` serves the same diagnostics to `goozels check` and agent hooks |
 | pkg | `pkg/{jsonrpc,lsp}` | protocol libraries with no project imports: JSON-RPC framing, LSP wire types and UTF-16 helpers |
-| cmd | `cmd/goozels` | composition root |
+| cmd | `cmd/goozels` | composition root; the `check` and `hook claude\|codex` subcommands |
 
 The domain and model layers know nothing about LSP or gopls and are unit-tested in
 isolation. The controller is covered by an in-process proxy test (with a fake
