@@ -30,9 +30,9 @@ controller's ports (`internal/controller/ports.go`) and are wired in `cmd`:
 | Layer | Package | Responsibility |
 |-------|---------|----------------|
 | model | `internal/model` | LSP-agnostic result types (positions, completions, diagnostics, commands) |
-| domain | `internal/domain/{mutagen,directive,config,command,report,document}` | gooze knowledge: mutagen registry, `gooze:ignore` parser, config schema, command/code-lens definitions, report summaries, line splitting |
+| domain | `internal/domain/{command,report,document}` | command/code-lens definitions, report diagnostics, line splitting; the mutagen registry, `gooze:ignore` parser, config schema and report files come from gooze's `gooze.dev/pkg/gooze/pkg/{mutagen,directive,config,report}` |
 | domain | `internal/domain/{ignore,goozeyml}` | feature logic: completion / hover / diagnostics |
-| adapter | `internal/adapter/{docstore,gopls,goozecli,reportstore}` | open-document store, gopls subprocess, gooze CLI runner, `.gooze-reports` YAML reader |
+| adapter | `internal/adapter/{docstore,gopls,goozecli}` | open-document store, gopls subprocess, gooze CLI runner |
 | controller | `internal/controller` | the proxy engine: routing, augmentation, diagnostics merge, model↔LSP mapping |
 | pkg | `pkg/{jsonrpc,lsp}` | protocol libraries with no project imports: JSON-RPC framing, LSP wire types and UTF-16 helpers |
 | cmd | `cmd/goozels` | composition root |

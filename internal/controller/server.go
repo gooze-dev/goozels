@@ -10,6 +10,10 @@ import (
 	"io"
 	"sync"
 
+	"gooze.dev/pkg/gooze/pkg/config"
+	"gooze.dev/pkg/gooze/pkg/report"
+
+	"gooze.dev/pkg/goozels/internal/domain/goozeyml"
 	"gooze.dev/pkg/goozels/pkg/jsonrpc"
 	"gooze.dev/pkg/goozels/pkg/lsp"
 )
@@ -20,7 +24,9 @@ type Server struct {
 	toGopls  *jsonrpc.Writer
 	store    Documents
 	gooze    GoozeRunner
-	reports  Reports
+	reports  report.Reader
+	config   config.Registry
+	goozeyml goozeyml.Editor
 
 	mu         sync.Mutex
 	pending    map[string]func(resp *jsonrpc.Message) // gopls response augmenters, keyed by request id
@@ -37,6 +43,8 @@ func NewServer(clientOut, goplsOut io.Writer, deps Deps) *Server {
 		store:      deps.Documents,
 		gooze:      deps.Gooze,
 		reports:    deps.Reports,
+		config:     deps.Config,
+		goozeyml:   goozeyml.New(deps.Config),
 		pending:    map[string]func(*jsonrpc.Message){},
 		goplsDiags: map[string][]lsp.Diagnostic{},
 		workdir:    ".",

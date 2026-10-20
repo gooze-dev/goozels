@@ -2,12 +2,18 @@ package controller
 
 import (
 	"encoding/json"
-	"fmt"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/mock"
+
+	"gooze.dev/pkg/gooze/pkg/config"
+	"gooze.dev/pkg/gooze/pkg/report"
 )
 
 func TestCodeLensAddsGoozeRun(t *testing.T) {
@@ -57,16 +63,8 @@ func TestCodeLensAddsGoozeRun(t *testing.T) {
 
 func TestReportDiagnosticsPublished(t *testing.T) {
 	dir := t.TempDir()
-	reportsDir := filepath.Join(dir, ".gooze-reports")
-	if err := os.MkdirAll(reportsDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	goFile := filepath.Join(dir, "x.go")
-	reportYAML := fmt.Sprintf("source:\n  origin:\n    shortpath: ./x.go\n    fullpath: %s\n"+
-		"result:\n- name: arithmetic\n  mutations:\n  - mutationid: a\n    status: 0\n  - mutationid: b\n    status: 1\n", goFile)
-	if err := os.WriteFile(filepath.Join(reportsDir, "x.go.yaml"), []byte(reportYAML), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	copyReports(t, filepath.Join(dir, config.DefaultReportsDir))
+	goFile := filepath.Join(dir, "calc", "calc.go")
 
 	h := newHarness(t, goplsResponder)
 	h.send(t, "initialize", "1", map[string]any{
@@ -77,12 +75,12 @@ func TestReportDiagnosticsPublished(t *testing.T) {
 
 	uri := "file://" + goFile
 	h.send(t, "textDocument/didOpen", "", map[string]any{
-		"textDocument": map[string]any{"uri": uri, "languageId": "go", "version": 1, "text": "package main\n"},
+		"textDocument": map[string]any{"uri": uri, "languageId": "go", "version": 1, "text": "package calc\n"},
 	})
 	// A change triggers a merged republish that includes report diagnostics.
 	h.send(t, "textDocument/didChange", "", map[string]any{
 		"textDocument":   map[string]any{"uri": uri, "version": 2},
-		"contentChanges": []any{map[string]any{"text": "package main\n\n"}},
+		"contentChanges": []any{map[string]any{"text": "package calc\n\n"}},
 	})
 
 	note := h.awaitNotification(t, "textDocument/publishDiagnostics")
@@ -95,14 +93,54 @@ func TestReportDiagnosticsPublished(t *testing.T) {
 	if err := json.Unmarshal(note.Params, &pd); err != nil {
 		t.Fatalf("decode diagnostics: %v", err)
 	}
-	found := false
+	var summary, survivor, notCovered bool
 	for _, d := range pd.Diagnostics {
-		if d.Source == "gooze" && strings.Contains(d.Message, "mutants survived") {
-			found = true
-		}
+		summary = summary || d.Message == "gooze: 3/16 mutants survived, 6 not covered — score 43.75%"
+		survivor = survivor || strings.Contains(d.Message, "surviving mutant")
+		notCovered = notCovered || strings.Contains(d.Message, "not covered by tests")
 	}
-	if !found {
-		t.Errorf("expected a gooze report summary diagnostic, got %+v", pd.Diagnostics)
+	if !summary || !survivor || !notCovered {
+		t.Errorf("expected summary, survivor and not-covered diagnostics, got %+v", pd.Diagnostics)
+	}
+}
+
+func TestReportDiagnosticsReadsWorkspaceReports(t *testing.T) {
+	reports := report.NewMockReader(t)
+	reports.EXPECT().ReadDir(filepath.Join("/proj", config.DefaultReportsDir)).Return([]report.Report{{
+		Source: report.Source{Origin: &report.File{ShortPath: "x.go"}},
+		Result: []report.Result{{Name: "arithmetic", Mutations: []report.MutationResult{{Status: report.Killed}}}},
+	}}, nil).Twice()
+
+	deps := productionDeps("gooze")
+	deps.Reports = reports
+	s := NewServer(io.Discard, io.Discard, deps)
+	s.setWorkdir("/proj")
+
+	if diags := s.reportDiagnostics("file:///proj/x.go"); len(diags) != 1 || !strings.Contains(diags[0].Message, "score 100.00%") {
+		t.Errorf("diagnostics = %+v, want one summary", diags)
+	}
+	if diags := s.reportDiagnostics("file:///proj/y.go"); diags != nil {
+		t.Errorf("diagnostics for a file without reports = %+v", diags)
+	}
+}
+
+func TestReportDiagnosticsReadError(t *testing.T) {
+	reports := report.NewMockReader(t)
+	reports.EXPECT().ReadDir(mock.Anything).Return(nil, errors.New("no reports"))
+
+	deps := productionDeps("gooze")
+	deps.Reports = reports
+
+	if diags := NewServer(io.Discard, io.Discard, deps).reportDiagnostics("file:///proj/x.go"); diags != nil {
+		t.Errorf("diagnostics = %+v, want none", diags)
+	}
+}
+
+// copyReports copies the gooze-generated reports in testdata/reports to dir.
+func copyReports(t *testing.T, dir string) {
+	t.Helper()
+	if err := os.CopyFS(dir, os.DirFS(filepath.Join("..", "..", "testdata", "reports"))); err != nil {
+		t.Fatal(err)
 	}
 }
 

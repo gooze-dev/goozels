@@ -27,8 +27,7 @@ export function activate(_context: ExtensionContext) {
   const clientOptions: LanguageClientOptions = {
     documentSelector: [
       { scheme: 'file', language: 'go' },
-      { scheme: 'file', pattern: '**/gooze.{yaml,yml}' },
-      { scheme: 'file', pattern: '**/.gooze.{yaml,yml}' },
+      { scheme: 'file', pattern: '**/gooze.yaml' },
     ],
   };
 

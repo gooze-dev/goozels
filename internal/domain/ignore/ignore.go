@@ -1,14 +1,16 @@
 // Package ignore implements the gooze:ignore feature logic: completion, hover
 // and diagnostics for //gooze:ignore directives in Go source. It is pure and
-// LSP-agnostic, depending only on the directive and mutagen domain packages.
+// LSP-agnostic, depending only on gooze's directive and mutagen packages.
 package ignore
 
 import (
+	"strconv"
 	"strings"
 
-	"gooze.dev/pkg/goozels/internal/domain/directive"
+	"gooze.dev/pkg/gooze/pkg/directive"
+	"gooze.dev/pkg/gooze/pkg/mutagen"
+
 	"gooze.dev/pkg/goozels/internal/domain/document"
-	"gooze.dev/pkg/goozels/internal/domain/mutagen"
 	"gooze.dev/pkg/goozels/internal/model"
 )
 
@@ -17,27 +19,27 @@ const generalDoc = "`gooze:ignore` skips mutation generation. With no names it i
 // Complete returns mutagen completions when col sits inside a directive's name
 // list on the given line. It returns nil otherwise.
 func Complete(line string, col int) []model.CompletionItem {
-	cur, ok := directive.CursorAt(line, col)
+	cur, ok := cursorAt(line, col)
 	if !ok {
 		return nil
 	}
 
-	prefix := strings.ToLower(cur.Prefix)
+	prefix := strings.ToLower(cur.prefix)
 
 	var items []model.CompletionItem
 
-	for _, mg := range mutagen.All {
+	for _, mg := range mutagen.All() {
 		if !strings.HasPrefix(mg.Name, prefix) {
 			continue
 		}
 
 		items = append(items, model.CompletionItem{
 			Label:        mg.Name,
-			Detail:       mg.Detail,
+			Detail:       "gooze mutagen v" + strconv.Itoa(mg.Version),
 			Doc:          mg.Doc,
 			InsertText:   mg.Name,
-			ReplaceStart: cur.TokenStart,
-			ReplaceEnd:   cur.TokenEnd,
+			ReplaceStart: cur.tokenStart,
+			ReplaceEnd:   cur.tokenEnd,
 		})
 	}
 
@@ -70,13 +72,13 @@ func Hover(line string, lineNum, col int) (model.Hover, bool) {
 			Range:    rng,
 		}, true
 	}
-	// Over the keyword itself (between the comment marker and the name list).
-	if col >= d.CommentStart && col <= d.ListStart {
+
+	if listStart := d.Keyword + len(directive.Keyword); col >= d.Keyword && col <= listStart {
 		return model.Hover{
 			Markdown: generalDoc,
 			Range: model.Range{
-				Start: model.Position{Line: lineNum, Column: d.CommentStart},
-				End:   model.Position{Line: lineNum, Column: d.ListStart},
+				Start: model.Position{Line: lineNum, Column: d.Keyword},
+				End:   model.Position{Line: lineNum, Column: listStart},
 			},
 		}, true
 	}
@@ -114,3 +116,52 @@ func Diagnose(text string) []model.Diagnostic {
 
 	return diags
 }
+
+// cursor is the mutagen-name token a completion at a position replaces.
+type cursor struct {
+	tokenStart int
+	tokenEnd   int
+	prefix     string
+}
+
+// cursorAt reports the completion context for byte offset col on the line. It
+// returns false when col is not inside a directive's mutagen list.
+func cursorAt(line string, col int) (cursor, bool) {
+	d, ok := directive.ParseLine(line)
+	if !ok {
+		return cursor{}, false
+	}
+
+	listStart := d.Keyword + len(directive.Keyword)
+	listEnd := d.End
+
+	for listEnd < len(line) && isSep(line[listEnd]) {
+		listEnd++
+	}
+
+	if col < listStart || col > listEnd {
+		return cursor{}, false
+	}
+
+	start, end := tokenBounds(line, listStart, listEnd, col)
+
+	return cursor{tokenStart: start, tokenEnd: end, prefix: line[start:col]}, true
+}
+
+// tokenBounds returns the [start, end) span of the non-separator token covering
+// col, clamped to [lo, hi).
+func tokenBounds(line string, lo, hi, col int) (int, int) {
+	start := col
+	for start > lo && !isSep(line[start-1]) {
+		start--
+	}
+
+	end := col
+	for end < hi && !isSep(line[end]) {
+		end++
+	}
+
+	return start, end
+}
+
+func isSep(c byte) bool { return c == ' ' || c == '\t' || c == ',' }

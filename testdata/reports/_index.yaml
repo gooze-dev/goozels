@@ -1,0 +1,31 @@
+total_mutations: 16
+killed_mutations: 7
+survived_mutations: 3
+failed_mutations: 0
+ignored_mutations: 0
+not_covered_mutations: 6
+result:
+    - source_hex: 798929346410d39f99f09961e02c0ab4b5ae8b3edd5bf3d7772da6b036d02564
+      mutations:
+        - mutation_name: arithmetic
+          mutation_reports:
+            - 029dbd0960821d53.yaml
+            - 1db28a6ed23ca36b.yaml
+            - 1ec5fe8dcb0fe411.yaml
+            - 41af641bd6f5c637.yaml
+            - 5372a2f319200cb8.yaml
+            - c15558913c8ec793.yaml
+            - eb0d62388deba012.yaml
+            - ed13ab8b75807ff4.yaml
+        - mutation_name: comparison
+          mutation_reports:
+            - 013ac06ad31b3041.yaml
+            - 03566ce70109d696.yaml
+            - a2246b76432dbe89.yaml
+            - b78bd7fdf88acd92.yaml
+            - ecabd43312a509f0.yaml
+        - mutation_name: numbers
+          mutation_reports:
+            - 24cbb4468032c589.yaml
+            - 406fb538029703a9.yaml
+            - 55e7a51270ad6598.yaml

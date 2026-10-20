@@ -1,140 +1,122 @@
-// Package report models gooze mutation-testing reports and turns them into
-// editor diagnostics. It is pure domain logic: it operates on already-parsed
-// report values (the adapter layer reads the YAML files) and has no LSP or gopls
-// dependency.
+// Package report turns gooze mutation reports into editor diagnostics. It is
+// pure domain logic over reports already read by gooze's report package and
+// has no LSP or gopls dependency.
 package report
 
 import (
+	"path/filepath"
 	"strconv"
 	"strings"
+
+	rpt "gooze.dev/pkg/gooze/pkg/report"
 
 	"gooze.dev/pkg/goozels/internal/model"
 )
 
-// Status is the outcome of testing a single mutation. The integer values match
-// gooze's model.TestStatus serialization.
-type Status int
+// ForFile returns the reports whose origin is the Go file at absPath: its
+// FullPath, or its ShortPath relative to workdir, names that file.
+func ForFile(reports []rpt.Report, workdir, absPath string) []rpt.Report {
+	var matched []rpt.Report
 
-const (
-	// Killed means tests detected the mutation (good).
-	Killed Status = iota
-	// Survived means tests did not detect the mutation (a test gap).
-	Survived
-	// Skipped means the mutation was not tested.
-	Skipped
-	// Timeout means testing the mutation timed out.
-	Timeout
-	// Errored means an error occurred while testing the mutation.
-	Errored
-)
-
-// Mutation is one mutation result within a file report.
-type Mutation struct {
-	ID     string
-	Status Status
-}
-
-// FileReport is gooze's report for a single source file.
-type FileReport struct {
-	ShortPath string
-	FullPath  string
-	Mutations []Mutation
-	Diff      []byte
-}
-
-// Summary aggregates a file report's outcomes.
-type Summary struct {
-	Killed   int
-	Survived int
-	Skipped  int
-	Timeout  int
-	Errored  int
-	Total    int
-}
-
-// Summarize counts a file report's mutation outcomes.
-func Summarize(r FileReport) Summary {
-	var s Summary
-
-	for _, mu := range r.Mutations {
-		s.Total++
-
-		switch mu.Status {
-		case Killed:
-			s.Killed++
-		case Survived:
-			s.Survived++
-		case Skipped:
-			s.Skipped++
-		case Timeout:
-			s.Timeout++
-		case Errored:
-			s.Errored++
+	for _, r := range reports {
+		origin := r.Source.Origin
+		if origin == nil {
+			continue
 		}
+
+		if origin.FullPath == absPath || (origin.ShortPath != "" && filepath.Join(workdir, origin.ShortPath) == absPath) {
+			matched = append(matched, r)
+		}
+	}
+
+	return matched
+}
+
+// Summarize counts the mutation results of every report.
+func Summarize(reports []rpt.Report) rpt.Summary {
+	var s rpt.Summary
+
+	for _, r := range reports {
+		s.Merge(rpt.Summarize(r))
 	}
 
 	return s
 }
 
-// Score is the mutation score (killed / total) as a percentage, matching gooze's
-// formula. An empty report scores 100.
-func (s Summary) Score() int {
-	if s.Total == 0 {
-		return 100
+// Message is a one-line human summary for an editor diagnostic.
+func Message(s rpt.Summary) string {
+	msg := "gooze: " + strconv.Itoa(s.Survived) + "/" + strconv.Itoa(s.Total) + " mutants survived"
+	if s.NotCovered > 0 {
+		msg += ", " + strconv.Itoa(s.NotCovered) + " not covered"
 	}
 
-	return s.Killed * 100 / s.Total
+	return msg + " — score " + strconv.FormatFloat(s.Score()*100, 'f', 2, 64) + "%"
 }
 
-// Message is a one-line human summary for an editor diagnostic.
-func (s Summary) Message() string {
-	return "gooze: " +
-		strconv.Itoa(s.Survived) + "/" + strconv.Itoa(s.Total) + " mutants survived — score " +
-		strconv.Itoa(s.Score()) + "%"
-}
-
-// SummaryDiagnostic returns a top-of-file diagnostic summarizing the report. Its
-// severity is a warning when any mutant survived, otherwise informational.
-func SummaryDiagnostic(r FileReport) model.Diagnostic {
-	s := Summarize(r)
+// SummaryDiagnostic returns a top-of-file diagnostic summarizing the reports.
+// Its severity is a warning when any mutant survived or was not covered,
+// otherwise informational.
+func SummaryDiagnostic(reports []rpt.Report) model.Diagnostic {
+	s := Summarize(reports)
 	severity := model.SeverityInfo
 
-	if s.Survived > 0 {
+	if s.Survived+s.NotCovered > 0 {
 		severity = model.SeverityWarning
 	}
 
 	return model.Diagnostic{
 		Range:    topOfFile,
 		Severity: severity,
-		Message:  s.Message(),
+		Message:  Message(s),
 		Source:   "gooze",
 	}
 }
 
-// SurvivorDiagnostics is a best-effort mapping of surviving mutants to source
-// lines by parsing the report's unified diff. gooze does not store per-mutant
-// line positions, so these markers are approximate and only emitted when the
-// report contains at least one survivor.
-func SurvivorDiagnostics(r FileReport) []model.Diagnostic {
-	if Summarize(r).Survived == 0 || len(r.Diff) == 0 {
-		return nil
-	}
-
+// SurvivorDiagnostics is a best-effort mapping of surviving and not covered
+// mutants to source lines by parsing each report's unified diff. gooze does not
+// store per-mutant line positions, so these markers are approximate.
+func SurvivorDiagnostics(reports []rpt.Report) []model.Diagnostic {
 	var diags []model.Diagnostic
 
-	for _, line := range hunkLines(string(r.Diff)) {
-		diags = append(diags, model.Diagnostic{
-			Range: model.Range{
-				Start: model.Position{Line: line, Column: 0},
-				End:   model.Position{Line: line, Column: 0},
-			},
-			Severity: model.SeverityWarning,
-			Message:  "gooze: possible surviving mutant near here (approximate)",
-			Source:   "gooze",
-		})
+	seen := map[model.Diagnostic]bool{}
+
+	for _, r := range reports {
+		msg := survivorMessage(rpt.Summarize(r))
+		if msg == "" || r.Diff == nil {
+			continue
+		}
+
+		for _, line := range hunkLines(string(*r.Diff)) {
+			d := model.Diagnostic{
+				Range: model.Range{
+					Start: model.Position{Line: line, Column: 0},
+					End:   model.Position{Line: line, Column: 0},
+				},
+				Severity: model.SeverityWarning,
+				Message:  msg,
+				Source:   "gooze",
+			}
+			if !seen[d] {
+				seen[d] = true
+				diags = append(diags, d)
+			}
+		}
 	}
 
 	return diags
+}
+
+// survivorMessage describes the mutants of a report that tests missed, or ""
+// when there are none.
+func survivorMessage(s rpt.Summary) string {
+	switch {
+	case s.Survived > 0:
+		return "gooze: possible surviving mutant near here (approximate)"
+	case s.NotCovered > 0:
+		return "gooze: possible mutant not covered by tests near here (approximate)"
+	default:
+		return ""
+	}
 }
 
 var topOfFile = model.Range{

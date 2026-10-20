@@ -8,10 +8,12 @@ import (
 	"fmt"
 	"os"
 
+	"gooze.dev/pkg/gooze/pkg/config"
+	"gooze.dev/pkg/gooze/pkg/report"
+
 	"gooze.dev/pkg/goozels/internal/adapter/docstore"
 	"gooze.dev/pkg/goozels/internal/adapter/goozecli"
 	"gooze.dev/pkg/goozels/internal/adapter/gopls"
-	"gooze.dev/pkg/goozels/internal/adapter/reportstore"
 	"gooze.dev/pkg/goozels/internal/controller"
 )
 
@@ -30,7 +32,8 @@ func main() {
 	srv := controller.NewServer(os.Stdout, proc.Stdin, controller.Deps{
 		Gooze:     goozecli.New(*goozePath),
 		Documents: docstore.New(),
-		Reports:   reportstore.Workspace{},
+		Reports:   report.NewDirReader(),
+		Config:    config.NewRegistry(),
 	})
 	_ = srv.Run(os.Stdin, proc.Stdout)
 
