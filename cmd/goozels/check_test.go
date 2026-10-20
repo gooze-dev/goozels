@@ -205,3 +205,46 @@ func TestRunHookCodex(t *testing.T) {
 		t.Errorf("a shell command without a patch should print nothing, got %q", out.String())
 	}
 }
+
+// projectWithReports copies testdata's sample project and the gooze reports a
+// real run produced for it into a temp workspace.
+func projectWithReports(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.CopyFS(dir, os.DirFS(filepath.Join("..", "..", "testdata", "project"))); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.CopyFS(filepath.Join(dir, ".gooze-reports"), os.DirFS(filepath.Join("..", "..", "testdata", "reports"))); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+func TestRunCheckTestFileShowsTestedSource(t *testing.T) {
+	dir := projectWithReports(t)
+	var out, errOut bytes.Buffer
+	if code := runCheck([]string{"-workdir", dir, filepath.Join(dir, "calc", "calc_test.go")}, &out, &errOut); code != 0 {
+		t.Fatalf("exit = %d, stderr = %q", code, errOut.String())
+	}
+	got := out.String()
+	if !strings.Contains(got, "calc/calc.go:1:1: warning: gooze: 3/16 mutants survived") {
+		t.Errorf("checking the test file should report calc.go's score, got:\n%s", got)
+	}
+	if !strings.Contains(got, "calc/calc.go:") || !strings.Contains(got, "surviving") {
+		t.Errorf("checking the test file should list calc.go's survivors, got:\n%s", got)
+	}
+}
+
+func TestRunHookTestFileEdit(t *testing.T) {
+	dir := projectWithReports(t)
+	var out, errOut bytes.Buffer
+	runHook([]string{"claude"}, hookPayload(t, dir, filepath.Join(dir, "calc", "calc_test.go")), &out, &errOut)
+
+	var got hookOutput
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("editing a test should produce hook output: %v\n%s", err, out.String())
+	}
+	if !strings.Contains(got.HookSpecificOutput.AdditionalContext, "calc/calc.go:1:1") {
+		t.Errorf("additionalContext = %q, want calc.go's summary", got.HookSpecificOutput.AdditionalContext)
+	}
+}

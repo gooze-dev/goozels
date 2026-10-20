@@ -160,3 +160,27 @@ func TestDiffChangesMultipleHunksAndBlankContext(t *testing.T) {
 		t.Error("empty or malformed diffs should yield no changes")
 	}
 }
+
+func TestSourcesForTest(t *testing.T) {
+	withTest := func(src, test string) rpt.Report {
+		r := newReport(src, "", rpt.Survived)
+		r.Source.Test = &rpt.File{ShortPath: test, FullPath: "/build/" + test}
+		return r
+	}
+	reports := []rpt.Report{
+		withTest("calc/calc.go", "calc/calc_test.go"),
+		withTest("calc/calc.go", "calc/calc_test.go"),
+		withTest("calc/round.go", "calc/calc_test.go"),
+		withTest("other/x.go", "other/x_test.go"),
+		newReport("calc/nocase.go", "", rpt.Killed), // no test recorded
+	}
+
+	got := SourcesForTest(reports, "/w", "/w/calc/calc_test.go")
+	want := []string{"/w/calc/calc.go", "/w/calc/round.go"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("SourcesForTest = %v, want %v", got, want)
+	}
+	if got := SourcesForTest(reports, "/w", "/w/calc/calc.go"); len(got) != 0 {
+		t.Errorf("a source file is not a test: got %v", got)
+	}
+}

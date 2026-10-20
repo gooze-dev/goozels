@@ -41,6 +41,22 @@ func (c Checker) Handles(absPath string) bool {
 	return strings.HasSuffix(absPath, ".go") || c.Config.IsConfigFile(filepath.Base(absPath))
 }
 
+// SourcesForTest returns the source files whose gooze reports were tested by
+// the test file at absPath, so a caller that just edited a test can show the
+// scores and surviving mutants of the code it tests.
+func (c Checker) SourcesForTest(workdir, absPath string) []string {
+	if !strings.HasSuffix(absPath, "_test.go") {
+		return nil
+	}
+
+	all, err := c.Reports.ReadDir(filepath.Join(workdir, config.DefaultReportsDir))
+	if err != nil {
+		return nil
+	}
+
+	return report.SourcesForTest(all, workdir, absPath)
+}
+
 // reportDiagnostics returns gooze report-derived diagnostics for a .go file: a
 // summary plus a marker per surviving or uncovered mutant. It returns nil when
 // no report exists.

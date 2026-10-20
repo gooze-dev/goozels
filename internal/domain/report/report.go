@@ -5,6 +5,7 @@ package report
 
 import (
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -19,17 +20,53 @@ func ForFile(reports []rpt.Report, workdir, absPath string) []rpt.Report {
 	var matched []rpt.Report
 
 	for _, r := range reports {
-		origin := r.Source.Origin
-		if origin == nil {
-			continue
-		}
-
-		if origin.FullPath == absPath || (origin.ShortPath != "" && filepath.Join(workdir, origin.ShortPath) == absPath) {
+		if names(r.Source.Origin, workdir, absPath) {
 			matched = append(matched, r)
 		}
 	}
 
 	return matched
+}
+
+// SourcesForTest returns, sorted and without duplicates, the source files whose
+// reports record the test file at absPath as their test. Each source is
+// resolved under workdir from its ShortPath, so reports made on another machine
+// still point at local files.
+func SourcesForTest(reports []rpt.Report, workdir, absPath string) []string {
+	seen := map[string]bool{}
+
+	for _, r := range reports {
+		origin := r.Source.Origin
+		if origin == nil || !names(r.Source.Test, workdir, absPath) {
+			continue
+		}
+
+		src := origin.FullPath
+		if origin.ShortPath != "" {
+			src = filepath.Join(workdir, origin.ShortPath)
+		}
+
+		seen[src] = true
+	}
+
+	sources := make([]string, 0, len(seen))
+	for src := range seen {
+		sources = append(sources, src)
+	}
+
+	slices.Sort(sources)
+
+	return sources
+}
+
+// names reports whether f is the file at absPath, by FullPath or by ShortPath
+// relative to workdir.
+func names(f *rpt.File, workdir, absPath string) bool {
+	if f == nil {
+		return false
+	}
+
+	return f.FullPath == absPath || (f.ShortPath != "" && filepath.Join(workdir, f.ShortPath) == absPath)
 }
 
 // Summarize counts the mutation results of every report.

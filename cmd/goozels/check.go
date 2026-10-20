@@ -63,8 +63,9 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 	return status
 }
 
-// checkFile returns the formatted diagnostics for one file, with paths shown
-// relative to workdir when possible.
+// checkFile returns the formatted diagnostics for one file, plus those of the
+// source files it tests when it is a _test.go file, with paths shown relative
+// to workdir when possible.
 func checkFile(checker controller.Checker, workdir, file string) ([]string, error) {
 	abs, err := filepath.Abs(file)
 	if err != nil {
@@ -97,7 +98,27 @@ func checkFile(checker controller.Checker, workdir, file string) ([]string, erro
 		lines = append(lines, formatDiagnostic(shown, d))
 	}
 
-	return lines, nil
+	return append(lines, testedSourceLines(checker, workdir, root, abs)...), nil
+}
+
+// testedSourceLines returns the diagnostics of the source files a test file
+// covers, since gooze reports scores and surviving mutants per source file.
+// Writing tests is how mutants get killed, so these are the targets for the
+// file just edited. Unreadable sources are skipped.
+func testedSourceLines(checker controller.Checker, workdir, root, abs string) []string {
+	var lines []string
+
+	for _, src := range checker.SourcesForTest(root, abs) {
+		if src == abs || strings.HasSuffix(src, "_test.go") {
+			continue
+		}
+
+		if found, err := checkFile(checker, workdir, src); err == nil {
+			lines = append(lines, found...)
+		}
+	}
+
+	return lines
 }
 
 // formatDiagnostic renders a diagnostic in the compiler-style form editors and

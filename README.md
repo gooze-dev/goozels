@@ -25,9 +25,10 @@ keep **all** your normal Go features and simply get gooze ones on top.
   ```go
   y := a - b //gooze:ignore bogus     ⚠ unknown gooze mutagen "bogus"
   ```
-- **▶ gooze run**, **gooze list**, and **📊 gooze report** buttons (code lenses)
-  at the top of every Go file — run mutation testing or open the report without
-  leaving the editor.
+- **▶ gooze run**, **gooze run --estimate**, and **📊 gooze report** buttons (code
+  lenses) at the top of every Go file — run mutation testing, preview what it
+  would mutate, or open the report (`gooze report view`) without leaving the
+  editor.
 - **Report results, in your editor.** After a run, goozels reads gooze's reports
   and shows each file's mutation score at the top — e.g. *"gooze: 2/10 mutants
   survived — score 80.00%"* — and marks each line where a mutant survived, with
@@ -79,7 +80,7 @@ Pick your editor — each guide is a couple of lines of config:
 | **VS Code** | [editors/vscode/README.md](editors/vscode/README.md) — easiest: add `"go.alternateTools": { "gopls": "goozels" }` to settings |
 | **Neovim** | [editors/neovim.md](editors/neovim.md) |
 | **GoLand / IntelliJ** | [editors/jetbrains.md](editors/jetbrains.md) |
-| **Claude Code** | [editors/claude-code/](editors/claude-code/README.md) — a ready-to-load plugin that works alongside `gopls-lsp`; see [Use with AI coding agents](#use-with-ai-coding-agents) |
+| **Claude Code** | The `gooze` plugin from [gooze-dev/claude-plugin](https://github.com/gooze-dev/claude-plugin), which works alongside `gopls-lsp`; see [Use with AI coding agents](#use-with-ai-coding-agents) |
 | **Codex** | [editors/codex/](editors/codex/README.md) — a post-edit hook |
 | **opencode** | [editors/opencode/](editors/opencode/README.md) — a plugin for v1 and v2 |
 | **Other LSP editors** | Launch `goozels` over stdio wherever you'd launch `gopls`, and also attach it to `gooze.yaml` files. |
@@ -121,8 +122,9 @@ internal/domain/ignore.go:108:3: warning: gooze: surviving comparison mutant —
 gooze.yaml:13:1: error: missing a space after ":"; gooze will ignore this whole file and use its defaults
 ```
 
-Run it from your project root, or pass `-workdir DIR` to say where
-`.gooze-reports/` lives. `goozels hook claude|codex` wraps the same check for the
+Checking a `_test.go` file also prints the score and survivors of the source
+files it tests, as recorded in gooze's reports. Run it from your project root,
+or pass `-workdir DIR` to say where `.gooze-reports/` lives. `goozels hook claude|codex` wraps the same check for the
 agent hooks below.
 
 ## Use with AI coding agents
@@ -141,7 +143,7 @@ keeps its normal Go tooling, and a post-edit hook adds gooze's view on top.
 
 | Agent | Setup | How the agent gets gooze diagnostics |
 |-------|-------|--------------------------------------|
-| **Claude Code** | [editors/claude-code/](editors/claude-code/README.md) | Plugin hook after `Write`/`Edit`, plus goozels as the language server for `gooze.yaml`. Keep the official `gopls-lsp` plugin on. |
+| **Claude Code** | [gooze-dev/claude-plugin](https://github.com/gooze-dev/claude-plugin) | The `gooze` plugin: a mutation-testing skill plus a hook after `Write`/`Edit`. Keep the official `gopls-lsp` plugin on. |
 | **Codex** | [editors/codex/](editors/codex/README.md) | Hook after `apply_patch` (Codex 0.125 or later). |
 | **opencode** | [editors/opencode/](editors/opencode/README.md) | Plugin after `edit`/`write`/patch, for v1 and v2. |
 
@@ -150,15 +152,18 @@ All three need `goozels` on the `PATH` of the shell you start the agent from, an
 
 ### Claude Code
 
-```bash
-claude --plugin-dir /absolute/path/to/goozels/editors/claude-code
+Install the `gooze` plugin from its marketplace, in a Claude Code session:
+
+```text
+/plugin marketplace add gooze-dev/claude-plugin
+/plugin install gooze@gooze
 ```
 
-`--plugin-dir` loads the plugin for that session only (it shows up as `@inline`
-in `/plugin`); to install it permanently, publish the directory to a plugin
-marketplace and use `/plugin install`. Leave `gopls-lsp` enabled: it handles
-`.go`, while this plugin handles `.yaml`/`.yml` and the post-edit hook, so they
-never compete for a file.
+It adds a `/gooze:mutation-testing` skill that teaches Claude the run, read,
+kill-survivors loop, and a post-edit hook that runs `goozels hook claude`. Leave
+`gopls-lsp` enabled for Go code intelligence; the plugin adds no language server,
+so the two never compete for a file. See the
+[plugin's README](https://github.com/gooze-dev/claude-plugin#readme) for details.
 
 ### Codex
 
@@ -179,7 +184,8 @@ built-in gopls; the plugin appends gooze diagnostics to each edit's result.
 
 1. Run `gooze run ./pkg/...` (or ask the agent to).
 2. The agent edits a file in that package and immediately sees its score and
-   surviving mutants.
+   surviving mutants. Editing a test file shows the score and survivors of the
+   source file it tests, since that's what the new tests should kill.
 3. It writes tests aimed at those mutants.
 4. It reruns gooze and checks that the score went up.
 
@@ -213,7 +219,7 @@ move the score until you rerun gooze.
 ```json
 {
   "permissions": {
-    "allow": ["Bash(gooze run *)", "Bash(gooze list *)", "Bash(goozels check *)"]
+    "allow": ["Bash(gooze run *)", "Bash(gooze report view)", "Bash(goozels check *)"]
   }
 }
 ```

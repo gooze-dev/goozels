@@ -55,8 +55,9 @@ internal/domain/ignore.go:1:1: warning: gooze: 32/102 mutants survived, 1 not co
 internal/domain/ignore.go:108:3: warning: gooze: surviving comparison mutant — tests still pass with: if rule.all || len(rule.names) < 0 {
 ```
 
-It prints nothing for files gooze has nothing to say about, and caps its output
-at 40 lines.
+When the patch edits a test file, it also reports the source files that test
+covers, since those are where the surviving mutants are. It prints nothing for
+files gooze has nothing to say about, and caps its output at 40 lines.
 
 > The hook sees `apply_patch` edits only. If Codex changes Go files with shell
 > commands (`sed`, `gofmt -w`, …), it won't fire; the `AGENTS.md` snippet in the

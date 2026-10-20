@@ -79,17 +79,17 @@ func (s *Server) handleExecuteCommand(msg *jsonrpc.Message) {
 // runGoozeCommand executes a gooze subcommand and reports progress to the editor.
 // It runs on its own goroutine so a long run never blocks the message pump.
 func (s *Server) runGoozeCommand(req *jsonrpc.Message, p lsp.ExecuteCommandParams) {
-	sub, ok := command.Subcommand(p.Command)
+	args, ok := command.Args(p.Command, firstStringArg(p.Arguments))
 	if !ok {
 		s.respondNull(req)
 		return
 	}
 
-	args := goozeArgs(sub, p.Arguments)
+	label := "gooze " + strings.Join(args, " ")
 
 	s.notify("window/showMessage", lsp.ShowMessageParams{
 		Type:    lsp.MessageInfo,
-		Message: "gooze " + strings.Join(args, " ") + " started…",
+		Message: label + " started…",
 	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), goozeRunTimeout)
@@ -97,32 +97,24 @@ func (s *Server) runGoozeCommand(req *jsonrpc.Message, p lsp.ExecuteCommandParam
 
 	out, err := s.gooze.Run(ctx, s.getWorkdir(), args...)
 
-	s.reportGoozeResult(sub, out, err)
+	s.reportGoozeResult(label, out, err)
 	s.respond(req, nil)
 }
 
-// goozeArgs builds the gooze CLI args for a subcommand: run/list take a package
-// pattern (default "./...") while view takes none.
-func goozeArgs(sub string, rawArgs []json.RawMessage) []string {
-	if sub == "view" {
-		return []string{sub}
+// firstStringArg returns the first command argument when it is a non-empty
+// string (the package pattern code lenses pass), or "".
+func firstStringArg(rawArgs []json.RawMessage) string {
+	var a string
+	if len(rawArgs) > 0 && json.Unmarshal(rawArgs[0], &a) == nil {
+		return a
 	}
 
-	pathArg := "./..."
-
-	if len(rawArgs) > 0 {
-		var a string
-		if json.Unmarshal(rawArgs[0], &a) == nil && a != "" {
-			pathArg = a
-		}
-	}
-
-	return []string{sub, pathArg}
+	return ""
 }
 
 // reportGoozeResult notifies the editor of a run's outcome and, on success,
 // refreshes report-derived diagnostics so a fresh report shows up.
-func (s *Server) reportGoozeResult(sub, out string, err error) {
+func (s *Server) reportGoozeResult(label, out string, err error) {
 	if out != "" {
 		s.notify("window/logMessage", lsp.ShowMessageParams{Type: lsp.MessageLog, Message: out})
 	}
@@ -130,7 +122,7 @@ func (s *Server) reportGoozeResult(sub, out string, err error) {
 	if err != nil {
 		s.notify("window/showMessage", lsp.ShowMessageParams{
 			Type:    lsp.MessageError,
-			Message: "gooze " + sub + " failed: " + err.Error(),
+			Message: label + " failed: " + err.Error(),
 		})
 
 		return
@@ -138,7 +130,7 @@ func (s *Server) reportGoozeResult(sub, out string, err error) {
 
 	s.notify("window/showMessage", lsp.ShowMessageParams{
 		Type:    lsp.MessageInfo,
-		Message: "gooze " + sub + " finished",
+		Message: label + " finished",
 	})
 	s.refreshReports()
 }

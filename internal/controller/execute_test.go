@@ -155,7 +155,7 @@ func TestExecuteGoozeCommandRunsLocally(t *testing.T) {
 	drainGopls(h)
 
 	h.send(t, "workspace/executeCommand", "5", map[string]any{
-		"command":   "gooze.list",
+		"command":   "gooze.estimate",
 		"arguments": []any{"./..."},
 	})
 
