@@ -1,6 +1,6 @@
 // goozels plugin for opencode v2 (2.x). After the agent edits a Go file or a
-// gooze config, it appends `goozels check` output to the tool result the model
-// reads. Copy to .opencode/plugins/goozels.ts in your project.
+// gooze config, it appends `goozels check` output, with its stderr notes, to
+// the tool result the model reads. Copy to .opencode/plugins/goozels.ts in your project.
 import { execFile } from "node:child_process"
 import path from "node:path"
 
@@ -8,8 +8,9 @@ const wanted = (f?: string): f is string => !!f && (f.endsWith(".go") || /(^|\/)
 
 const check = (files: string[], cwd: string) =>
   new Promise<string>((resolve) =>
-    execFile("goozels", ["check", "--max", "40", ...files], { cwd, timeout: 60_000 }, (_err, stdout) =>
-      resolve(String(stdout ?? "").trim()),
+    // Notes such as "no gooze results for x.go yet" go to stderr; keep them.
+    execFile("goozels", ["check", "--max", "40", ...files], { cwd, timeout: 60_000 }, (_err, stdout, stderr) =>
+      resolve([stderr, stdout].map((s) => String(s ?? "").trim()).filter(Boolean).join("\n")),
     ),
   )
 

@@ -1,9 +1,10 @@
 # opencode setup
 
 goozels plugs into opencode as a small **plugin**: after the agent edits a Go
-file or a gooze config, the plugin runs `goozels check` on it and appends the
-gooze diagnostics (mutation score, surviving mutants, `//gooze:ignore` and
-`gooze.yaml` errors) to the edit's result. opencode keeps its built-in gopls.
+file or a gooze config, the plugin runs `goozels check --max 40` on it and
+appends the gooze diagnostics (mutation score, surviving mutants, `//gooze:ignore`
+and `gooze.yaml` errors), plus notes such as "no gooze results for x.go yet", to
+the edit's result. opencode keeps its built-in gopls.
 
 opencode v1 and v2 have different plugin APIs, so there is one file for each.
 Check yours with `opencode --version`.
