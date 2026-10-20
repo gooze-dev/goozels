@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "goozels hook codex",
+            "command": "sh -c 'v=$(goozels version 2>/dev/null); case \"$v\" in goozels*) exec goozels hook codex;; esac; exit 0'",
             "timeout": 60,
             "statusMessage": "goozels check"
           }

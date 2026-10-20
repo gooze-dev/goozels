@@ -32,9 +32,14 @@ Apply, and reopen a `.go` file or a `gooze.yaml`.
 ## 3. Use it
 
 - In `.go` files: completion, hover and a diagnostic for `//gooze:ignore`
-  mutagen names, plus **▶ gooze run** / **gooze run --estimate** /
-  **📊 gooze report** code lenses at the top of the file. Clicking a lens runs gooze in the workspace root and reports progress
-  via IDE notifications.
+  mutagen names, plus **gooze: run package** / **gooze: estimate** /
+  **gooze: report** code lenses at the top of the file. Clicking a lens runs
+  gooze in the workspace root (run and estimate on the file's package) and
+  reports progress via IDE notifications; the finish message carries the
+  mutation score.
+- Each file's gooze score and surviving mutants appear as diagnostics. After
+  you edit the file (or save its test) they are marked as out of date until
+  gooze runs again.
 - In `gooze.yaml`: key/value completion, hover docs, and validation.
 
 > **GoLand note:** GoLand already has its own Go engine, so for `.go` files the

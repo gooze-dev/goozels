@@ -17,7 +17,7 @@ export const Goozels: Plugin = async ({ $, directory }) => ({
     const checked = files.filter(wanted)
     if (!checked.length) return
 
-    const found = (await $`goozels check ${checked}`.cwd(directory).nothrow().quiet().text()).trim()
-    if (found) output.output += `\n\ngoozels (gooze mutation testing) diagnostics after this edit:\n${found}`
+    const found = (await $`goozels check --max 40 ${checked}`.cwd(directory).nothrow().quiet().text()).trim()
+    if (found) output.output += `\n\ngooze results from the last run:\n${found}`
   },
 })

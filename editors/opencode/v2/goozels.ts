@@ -8,7 +8,7 @@ const wanted = (f?: string): f is string => !!f && (f.endsWith(".go") || /(^|\/)
 
 const check = (files: string[], cwd: string) =>
   new Promise<string>((resolve) =>
-    execFile("goozels", ["check", ...files], { cwd, timeout: 60_000 }, (_err, stdout) =>
+    execFile("goozels", ["check", "--max", "40", ...files], { cwd, timeout: 60_000 }, (_err, stdout) =>
       resolve(String(stdout ?? "").trim()),
     ),
   )
@@ -38,7 +38,7 @@ export default {
           : prior?.length
             ? [...prior]
             : [{ type: "text", text: JSON.stringify(event.result.output) }]
-      content.push({ type: "text", text: `goozels (gooze mutation testing) diagnostics after this edit:\n${found}` })
+      content.push({ type: "text", text: `gooze results from the last run:\n${found}` })
       event.result = { ...event.result, content }
     })
   },
