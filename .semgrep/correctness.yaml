@@ -34,13 +34,40 @@ rules:
   - pattern-not-inside: |
       defer func(...) { ... }(...)
 
+- id: goozels-context-background-in-cobra-run
+  languages: [go]
+  severity: WARNING
+  message: >-
+    `context.Background()`/`context.TODO()` inside a Cobra run hook detaches
+    the work from the command's context, so Ctrl-C and `ExecuteContext`
+    cancellation are ignored. Use `cmd.Context()` instead.
+  metadata:
+    category: correctness
+    confidence: HIGH
+  paths:
+    include:
+    - cmd/
+  patterns:
+  - pattern-either:
+    - pattern: context.Background()
+    - pattern: context.TODO()
+  - pattern-either:
+    - pattern-inside: |
+        func($CMD *cobra.Command, ...) error { ... }
+    - pattern-inside: |
+        func($CMD *cobra.Command, ...) { ... }
+    - pattern-inside: |
+        func $FN($CMD *cobra.Command, ...) error { ... }
+    - pattern-inside: |
+        func $FN($CMD *cobra.Command, ...) { ... }
+
 - id: goozels-os-exit-outside-entrypoint
   languages: [go]
   severity: WARNING
   message: >-
     `os.Exit`/`log.Fatal*` terminates the process immediately, skipping deferred
     cleanup (the gopls child process, open streams) and making the code
-    untestable. Return an error up to `main` and exit there.
+    untestable. Return an error up to `main`/`Execute` and exit there.
   metadata:
     category: correctness
     confidence: HIGH
@@ -52,6 +79,8 @@ rules:
     - pattern: log.Fatalln(...)
   - pattern-not-inside: |
       func main() { ... }
+  - pattern-not-inside: |
+      func Execute() { ... }
   - pattern-not-inside: |
       func TestMain(...) { ... }
 
