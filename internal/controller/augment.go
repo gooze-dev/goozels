@@ -3,9 +3,9 @@ package controller
 import (
 	"encoding/json"
 
-	"gooze.dev/pkg/goozels/internal/adapter/jsonrpc"
-	"gooze.dev/pkg/goozels/internal/adapter/lsp"
 	"gooze.dev/pkg/goozels/internal/domain/command"
+	"gooze.dev/pkg/goozels/pkg/jsonrpc"
+	"gooze.dev/pkg/goozels/pkg/lsp"
 )
 
 // goozeTriggerChars are added to gopls's completion trigger characters so the

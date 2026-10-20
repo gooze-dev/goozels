@@ -147,17 +147,17 @@ var topOfFile = model.Range{
 func hunkLines(diff string) []int {
 	var lines []int
 
-	for _, l := range strings.Split(diff, "\n") {
+	for l := range strings.SplitSeq(diff, "\n") {
 		if !strings.HasPrefix(l, "@@") {
 			continue
 		}
 
-		plus := strings.Index(l, "+")
-		if plus < 0 {
+		_, after, ok := strings.Cut(l, "+")
+		if !ok {
 			continue
 		}
 
-		num := l[plus+1:]
+		num := after
 		if comma := strings.IndexByte(num, ','); comma >= 0 {
 			num = num[:comma]
 		}

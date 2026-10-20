@@ -1,0 +1,71 @@
+---
+# Correctness and hygiene rules for goozels (mirrors gooze's .semgrep/correctness.yaml).
+#
+# Validate with:  semgrep --validate --config .semgrep/
+rules:
+- id: goozels-ignored-close-or-remove-error
+  languages: [go]
+  severity: WARNING
+  message: >-
+    Error from `$CALL` is discarded outside a `defer`. For files that were
+    written, `Close` reports flush failures and `Remove` reports leftover
+    state; check the error (or wrap the call in a `defer` if it is only a
+    best-effort cleanup).
+  metadata:
+    category: correctness
+    confidence: MEDIUM
+  paths:
+    exclude:
+    - '*_test.go'
+  patterns:
+  - pattern-either:
+    - pattern: _ = $CALL
+    - pattern: _, _ = $CALL
+  - metavariable-pattern:
+      metavariable: $CALL
+      pattern-either:
+      - pattern: $F.Close()
+      - pattern: os.Remove(...)
+      - pattern: os.RemoveAll(...)
+      - pattern: $R.Remove(...)
+      - pattern: $R.RemoveAll(...)
+  - pattern-not-inside: |
+      defer func() { ... }()
+  - pattern-not-inside: |
+      defer func(...) { ... }(...)
+
+- id: goozels-os-exit-outside-entrypoint
+  languages: [go]
+  severity: WARNING
+  message: >-
+    `os.Exit`/`log.Fatal*` terminates the process immediately, skipping deferred
+    cleanup (the gopls child process, open streams) and making the code
+    untestable. Return an error up to `main` and exit there.
+  metadata:
+    category: correctness
+    confidence: HIGH
+  patterns:
+  - pattern-either:
+    - pattern: os.Exit(...)
+    - pattern: log.Fatal(...)
+    - pattern: log.Fatalf(...)
+    - pattern: log.Fatalln(...)
+  - pattern-not-inside: |
+      func main() { ... }
+  - pattern-not-inside: |
+      func TestMain(...) { ... }
+
+- id: goozels-exec-command-without-context
+  languages: [go]
+  severity: WARNING
+  message: >-
+    `exec.Command` ignores cancellation. gooze and gopls child processes must
+    stop when their run times out or the editor disconnects; use
+    `exec.CommandContext(ctx, ...)`.
+  metadata:
+    category: correctness
+    confidence: HIGH
+  paths:
+    exclude:
+    - '*_test.go'
+  pattern: exec.Command(...)

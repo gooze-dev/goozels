@@ -1,6 +1,12 @@
-package lsp
+// Package docstore tracks the text of documents the editor has open. It is an
+// interface adapter implementing the controller's Documents port.
+package docstore
 
-import "sync"
+import (
+	"sync"
+
+	"gooze.dev/pkg/goozels/pkg/lsp"
+)
 
 // Document is the tracked state of an open file.
 type Document struct {
@@ -15,8 +21,8 @@ type Store struct {
 	docs map[string]*Document
 }
 
-// NewStore creates an empty document store.
-func NewStore() *Store { return &Store{docs: map[string]*Document{}} }
+// New creates an empty document store.
+func New() *Store { return &Store{docs: map[string]*Document{}} }
 
 // Open records a newly opened document.
 func (s *Store) Open(uri, text string, version int) {
@@ -27,7 +33,7 @@ func (s *Store) Open(uri, text string, version int) {
 }
 
 // Change applies content changes (full or incremental) to a tracked document.
-func (s *Store) Change(uri string, version int, changes []TextDocumentContentChangeEvent) {
+func (s *Store) Change(uri string, version int, changes []lsp.TextDocumentContentChangeEvent) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -78,41 +84,17 @@ func (s *Store) Text(uri string) (string, bool) {
 	return doc.Text, true
 }
 
-func applyChange(text string, ch TextDocumentContentChangeEvent) string {
+func applyChange(text string, ch lsp.TextDocumentContentChangeEvent) string {
 	if ch.Range == nil {
 		return ch.Text
 	}
 
-	start := positionToOffset(text, ch.Range.Start)
+	start := lsp.PositionToOffset(text, ch.Range.Start)
 
-	end := positionToOffset(text, ch.Range.End)
+	end := lsp.PositionToOffset(text, ch.Range.End)
 	if start > end {
 		start, end = end, start
 	}
 
 	return text[:start] + ch.Text + text[end:]
-}
-
-// positionToOffset converts an LSP position to a byte offset within text.
-func positionToOffset(text string, pos Position) int {
-	line, i := 0, 0
-	for line < pos.Line && i < len(text) {
-		if text[i] == '\n' {
-			line++
-		}
-
-		i++
-	}
-
-	end := i
-	for end < len(text) && text[end] != '\n' {
-		end++
-	}
-
-	off := i + utf16ToByte(text[i:end], pos.Character)
-	if off > len(text) {
-		off = len(text)
-	}
-
-	return off
 }

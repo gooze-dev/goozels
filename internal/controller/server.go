@@ -1,7 +1,8 @@
 // Package controller is the orchestration layer: it proxies the LSP message
 // stream between the editor (client) and gopls (server), and augments the
-// handful of methods that carry gooze features. It depends on the adapter and
-// domain layers; nothing depends on it except the cmd entrypoint.
+// handful of methods that carry gooze features. It depends on the domain layer
+// and on adapters only through the ports in ports.go; nothing depends on it
+// except the cmd entrypoint.
 package controller
 
 import (
@@ -9,9 +10,8 @@ import (
 	"io"
 	"sync"
 
-	"gooze.dev/pkg/goozels/internal/adapter/goozecli"
-	"gooze.dev/pkg/goozels/internal/adapter/jsonrpc"
-	"gooze.dev/pkg/goozels/internal/adapter/lsp"
+	"gooze.dev/pkg/goozels/pkg/jsonrpc"
+	"gooze.dev/pkg/goozels/pkg/lsp"
 )
 
 // Server proxies one editor<->gopls session.
@@ -20,6 +20,7 @@ type Server struct {
 	toGopls  *jsonrpc.Writer
 	store    Documents
 	gooze    GoozeRunner
+	reports  Reports
 
 	mu         sync.Mutex
 	pending    map[string]func(resp *jsonrpc.Message) // gopls response augmenters, keyed by request id
@@ -28,13 +29,14 @@ type Server struct {
 }
 
 // NewServer builds a server writing to the given client and gopls streams.
-// goozePath is the gooze binary used by execute commands (defaults to "gooze").
-func NewServer(clientOut, goplsOut io.Writer, goozePath string) *Server {
+// deps supplies the document store, gooze runner and report reader.
+func NewServer(clientOut, goplsOut io.Writer, deps Deps) *Server {
 	return &Server{
 		toClient:   jsonrpc.NewWriter(clientOut),
 		toGopls:    jsonrpc.NewWriter(goplsOut),
-		store:      lsp.NewStore(),
-		gooze:      goozecli.New(goozePath),
+		store:      deps.Documents,
+		gooze:      deps.Gooze,
+		reports:    deps.Reports,
 		pending:    map[string]func(*jsonrpc.Message){},
 		goplsDiags: map[string][]lsp.Diagnostic{},
 		workdir:    ".",
@@ -68,13 +70,7 @@ func (s *Server) Run(clientIn, goplsIn io.Reader) error {
 	goplsReader := jsonrpc.NewReader(goplsIn)
 
 	var wg sync.WaitGroup
-	wg.Add(1)
-
-	go func() {
-		defer wg.Done()
-
-		s.pump(goplsReader, s.handleGopls)
-	}()
+	wg.Go(func() { s.pump(goplsReader, s.handleGopls) })
 
 	// The client pump runs on this goroutine; when the editor disconnects we
 	// return and let the caller tear down gopls.
@@ -132,12 +128,12 @@ func (s *Server) respond(req *jsonrpc.Message, result any) {
 		raw = json.RawMessage("null")
 	}
 
-	s.sendClient(&jsonrpc.Message{JSONRPC: "2.0", ID: req.ID, Result: raw})
+	s.sendClient(&jsonrpc.Message{JSONRPC: jsonrpc.Version, ID: req.ID, Result: raw})
 }
 
 // respondNull replies to a request with a null result.
 func (s *Server) respondNull(req *jsonrpc.Message) {
-	s.sendClient(&jsonrpc.Message{JSONRPC: "2.0", ID: req.ID, Result: json.RawMessage("null")})
+	s.sendClient(&jsonrpc.Message{JSONRPC: jsonrpc.Version, ID: req.ID, Result: json.RawMessage("null")})
 }
 
 // notify sends a notification to the client.
@@ -147,5 +143,5 @@ func (s *Server) notify(method string, params any) {
 		return
 	}
 
-	s.sendClient(&jsonrpc.Message{JSONRPC: "2.0", Method: method, Params: raw})
+	s.sendClient(&jsonrpc.Message{JSONRPC: jsonrpc.Version, Method: method, Params: raw})
 }

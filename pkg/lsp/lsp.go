@@ -1,16 +1,12 @@
 // Package lsp holds the subset of LSP wire types goozels reads or writes, plus
-// helpers to translate between LSP positions (UTF-16) and the byte columns used
-// by the domain. It is an interface adapter: it depends on model (and indirectly
-// the domain result types) but never the reverse.
+// helpers to translate between LSP positions (UTF-16) and byte offsets. It is a
+// protocol library with no project dependencies, so every layer may import it.
 package lsp
 
 import (
 	"encoding/json"
 	"net/url"
-	"path"
 	"strings"
-
-	"gooze.dev/pkg/goozels/internal/domain/config"
 )
 
 // Position is an LSP position; Character is a UTF-16 code-unit offset.
@@ -174,11 +170,8 @@ func URIPath(uri string) string {
 // IsGoURI reports whether the URI names a .go file.
 func IsGoURI(uri string) bool { return strings.HasSuffix(URIPath(uri), ".go") }
 
-// IsConfigURI reports whether the URI names a gooze config file.
-func IsConfigURI(uri string) bool { return config.IsConfigFile(path.Base(URIPath(uri))) }
-
-// utf16ToByte converts a UTF-16 character offset on a line to a byte offset.
-func utf16ToByte(line string, u16 int) int {
+// UTF16ToByte converts a UTF-16 character offset on a line to a byte offset.
+func UTF16ToByte(line string, u16 int) int {
 	if u16 <= 0 {
 		return 0
 	}
@@ -199,8 +192,8 @@ func utf16ToByte(line string, u16 int) int {
 	return len(line)
 }
 
-// byteToUTF16 converts a byte offset on a line to a UTF-16 character offset.
-func byteToUTF16(line string, b int) int {
+// ByteToUTF16 converts a byte offset on a line to a UTF-16 character offset.
+func ByteToUTF16(line string, b int) int {
 	if b > len(line) {
 		b = len(line)
 	}
@@ -220,4 +213,26 @@ func byteToUTF16(line string, b int) int {
 	}
 
 	return count
+}
+
+// PositionToOffset converts an LSP position to a byte offset within text,
+// clamping positions past the end to len(text).
+func PositionToOffset(text string, pos Position) int {
+	line, i := 0, 0
+	for line < pos.Line && i < len(text) {
+		if text[i] == '\n' {
+			line++
+		}
+
+		i++
+	}
+
+	end := i
+	for end < len(text) && text[end] != '\n' {
+		end++
+	}
+
+	off := min(i+UTF16ToByte(text[i:end], pos.Character), len(text))
+
+	return off
 }

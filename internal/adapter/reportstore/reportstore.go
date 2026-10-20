@@ -15,6 +15,19 @@ import (
 
 const indexFileName = "_index.yaml"
 
+// DirName is gooze's default reports directory, relative to the workspace.
+const DirName = ".gooze-reports"
+
+// Workspace finds reports under a workspace's default reports directory. It
+// implements the controller's Reports port.
+type Workspace struct{}
+
+// ReportForFile returns the report for the Go file at absPath, read from
+// <workdir>/.gooze-reports.
+func (Workspace) ReportForFile(workdir, absPath string) (report.FileReport, bool) {
+	return New(filepath.Join(workdir, DirName)).ReportForFile(absPath)
+}
+
 // Store loads reports from a gooze reports directory.
 type Store struct {
 	Dir string

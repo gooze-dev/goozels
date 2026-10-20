@@ -2,16 +2,19 @@ name := goozels
 bin := ./.bin
 # Versions
 COBRA_CLI_VERSION := v1.3.0
-GOLANGCI_LINT_VERSION := v2.8.0
-MOCKERY_VERSION := v2.53.5
+GOLANGCI_LINT_VERSION := v2.15.0
+MOCKERY_VERSION := v2.53.8
+SEMGREP_VERSION := 1.181.0
 
 # Default benchtime for benchmarks run via `make test`.
 BENCHTIME ?= 100ms
 
 # Whitelisted packages (exclude testdata explicitly)
-PKG_WHITELIST :=  ./cmd/... ./internal/...
+PKG_WHITELIST :=  ./cmd/... ./internal/... ./pkg/...
+# Same tree as PKG_WHITELIST, as plain paths for tools that do not understand `/...`.
+SEMGREP_TARGETS := ./cmd ./internal ./pkg
 
-.PHONY: all install-tools build lint test clean run fmt mocks clean-mocks install-precommit
+.PHONY: all install-tools build lint test clean run fmt mocks clean-mocks install-precommit semgrep install-semgrep
 
 all: install-precommit build
 
@@ -30,13 +33,20 @@ install-cobra-cli: prepare-env
 
 install-golangci-lint: prepare-env
 	@echo "Installing golangci-lint $(GOLANGCI_LINT_VERSION)..."
-	@curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b $(abspath $(bin)) $(GOLANGCI_LINT_VERSION)
+	@# Build from source with the local Go toolchain so the linter's embedded
+	@# type-checker matches the installed Go version (the prebuilt release binary
+	@# panics when run against a newer Go than it was compiled with).
+	@GOBIN=$(abspath $(bin)) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 
 install-mockery: prepare-env
 	@echo "Installing mockery $(MOCKERY_VERSION)..."
 	@GOBIN=$(abspath $(bin)) go install github.com/vektra/mockery/v2@$(MOCKERY_VERSION)
 
-install-tools: install-cobra-cli install-precommit-tools install-golangci-lint install-mockery
+install-semgrep: prepare-env
+	@echo "Installing semgrep $(SEMGREP_VERSION)..."
+	@pip install --user semgrep==$(SEMGREP_VERSION) || pip3 install --user semgrep==$(SEMGREP_VERSION)
+
+install-tools: install-cobra-cli install-precommit-tools install-golangci-lint install-mockery install-semgrep
 	@echo "All tools installed."
 
 
@@ -48,6 +58,10 @@ lint:
 	@echo "Running golangci-lint..."
 	@$(bin)/golangci-lint run $(PKG_WHITELIST)
 
+semgrep:
+	@echo "Running semgrep..."
+	@semgrep scan --config .semgrep/ --config p/golang --error --disable-version-check --quiet $(SEMGREP_TARGETS)
+
 test:
 	@packages=$$(go list $(PKG_WHITELIST) | grep -v '/mocks$$'); \
 	coverpkgs=$$(echo "$$packages" | paste -sd, -); \
@@ -57,6 +71,7 @@ test:
 clean: clean-mocks
 	@rm -rf $(bin)
 	@rm -f coverage.out coverage.html
+	@rm -rf .gooze-reports
 
 run: build
 	@$(bin)/$(name) $$(echo "$(filter-out $@,$(MAKECMDGOALS))" | sed 's/^-/-/')

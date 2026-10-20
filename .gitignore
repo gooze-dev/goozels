@@ -36,3 +36,8 @@ go.work.sum
 
 # Generated HTML coverage report
 coverage.html
+
+# Output of running gooze against this repo (mutation reports, logs)
+.gooze-reports/
+.gooze.log
+*.log.*

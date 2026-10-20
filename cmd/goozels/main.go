@@ -8,7 +8,10 @@ import (
 	"fmt"
 	"os"
 
+	"gooze.dev/pkg/goozels/internal/adapter/docstore"
+	"gooze.dev/pkg/goozels/internal/adapter/goozecli"
 	"gooze.dev/pkg/goozels/internal/adapter/gopls"
+	"gooze.dev/pkg/goozels/internal/adapter/reportstore"
 	"gooze.dev/pkg/goozels/internal/controller"
 )
 
@@ -24,7 +27,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	srv := controller.NewServer(os.Stdout, proc.Stdin, *goozePath)
+	srv := controller.NewServer(os.Stdout, proc.Stdin, controller.Deps{
+		Gooze:     goozecli.New(*goozePath),
+		Documents: docstore.New(),
+		Reports:   reportstore.Workspace{},
+	})
 	_ = srv.Run(os.Stdin, proc.Stdout)
 
 	// Editor disconnected: tear down gopls.

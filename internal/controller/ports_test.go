@@ -3,15 +3,17 @@ package controller
 import (
 	"testing"
 
+	"gooze.dev/pkg/goozels/internal/adapter/docstore"
 	"gooze.dev/pkg/goozels/internal/adapter/goozecli"
-	"gooze.dev/pkg/goozels/internal/adapter/lsp"
+	"gooze.dev/pkg/goozels/internal/adapter/reportstore"
 )
 
 // Compile-time assertions that the production adapters satisfy the controller's
 // ports. These fail to build (not just fail at runtime) if a port drifts.
 var (
 	_ GoozeRunner = goozecli.Runner{}
-	_ Documents   = (*lsp.Store)(nil)
+	_ Documents   = (*docstore.Store)(nil)
+	_ Reports     = reportstore.Workspace{}
 )
 
 func TestPortsSatisfied(t *testing.T) {
@@ -20,7 +22,10 @@ func TestPortsSatisfied(t *testing.T) {
 	if (GoozeRunner)(goozecli.New("gooze")) == nil {
 		t.Fatal("goozecli.Runner should satisfy GoozeRunner")
 	}
-	if (Documents)(lsp.NewStore()) == nil {
-		t.Fatal("lsp.Store should satisfy Documents")
+	if (Documents)(docstore.New()) == nil {
+		t.Fatal("docstore.Store should satisfy Documents")
+	}
+	if (Reports)(reportstore.Workspace{}) == nil {
+		t.Fatal("reportstore.Workspace should satisfy Reports")
 	}
 }

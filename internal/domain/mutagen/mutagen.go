@@ -7,7 +7,7 @@
 // mutagen by its lowercase Name; gooze matches it case-insensitively.
 package mutagen
 
-// Mutagen is a single mutation category recognised by gooze.
+// Mutagen is a single mutation category recognized by gooze.
 type Mutagen struct {
 	// Name is the canonical, lowercase identifier used in //gooze:ignore
 	// directives (e.g. "arithmetic").
@@ -75,6 +75,7 @@ var byName = func() map[string]Mutagen {
 	for _, mg := range All {
 		m[mg.Name] = mg
 	}
+
 	return m
 }()
 
@@ -85,7 +86,7 @@ func Lookup(name string) (Mutagen, bool) {
 	return mg, ok
 }
 
-// IsValid reports whether name is a recognised mutagen (case-insensitive).
+// IsValid reports whether name is a recognized mutagen (case-insensitive).
 func IsValid(name string) bool {
 	_, ok := byName[normalize(name)]
 	return ok

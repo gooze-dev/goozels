@@ -1,22 +1,23 @@
-package lsp
+package controller
 
 import (
 	"testing"
 
 	"gooze.dev/pkg/goozels/internal/model"
+	"gooze.dev/pkg/goozels/pkg/lsp"
 )
 
-func TestCompletionResult(t *testing.T) {
+func TestLSPCompletion(t *testing.T) {
 	line := "//gooze:ignore ar"
 	items := []model.CompletionItem{
 		{Label: "arithmetic", Detail: "d", Doc: "docs", InsertText: "arithmetic", ReplaceStart: 15, ReplaceEnd: 17},
 	}
-	list := CompletionResult(3, line, CompletionKindEnumMember, items)
+	list := lspCompletion(3, line, lsp.CompletionKindEnumMember, items)
 	if len(list.Items) != 1 {
 		t.Fatalf("items = %d", len(list.Items))
 	}
 	it := list.Items[0]
-	if it.Kind != CompletionKindEnumMember || it.Documentation == nil || it.TextEdit == nil {
+	if it.Kind != lsp.CompletionKindEnumMember || it.Documentation == nil || it.TextEdit == nil {
 		t.Fatalf("item not fully populated: %+v", it)
 	}
 	if it.TextEdit.Range.Start.Line != 3 || it.TextEdit.Range.Start.Character != 15 || it.TextEdit.Range.End.Character != 17 {
@@ -27,13 +28,13 @@ func TestCompletionResult(t *testing.T) {
 	}
 }
 
-func TestHoverResult(t *testing.T) {
+func TestLSPHover(t *testing.T) {
 	lines := []string{"//gooze:ignore comparison"}
 	h := model.Hover{
 		Markdown: "docs",
 		Range:    model.Range{Start: model.Position{Line: 0, Column: 15}, End: model.Position{Line: 0, Column: 25}},
 	}
-	got := HoverResult(lines, h)
+	got := lspHover(lines, h)
 	if got.Contents.Kind != "markdown" || got.Contents.Value != "docs" {
 		t.Errorf("contents = %+v", got.Contents)
 	}
@@ -42,7 +43,7 @@ func TestHoverResult(t *testing.T) {
 	}
 }
 
-func TestDiagnostics(t *testing.T) {
+func TestLSPDiagnostics(t *testing.T) {
 	text := "x := 1 //gooze:ignore bogus"
 	ds := []model.Diagnostic{{
 		Range:    model.Range{Start: model.Position{Line: 0, Column: 22}, End: model.Position{Line: 0, Column: 27}},
@@ -50,7 +51,7 @@ func TestDiagnostics(t *testing.T) {
 		Message:  "unknown",
 		Source:   "gooze",
 	}}
-	got := Diagnostics(text, ds)
+	got := lspDiagnostics(text, ds)
 	if len(got) != 1 || got[0].Severity != int(model.SeverityWarning) || got[0].Source != "gooze" {
 		t.Fatalf("diagnostics = %+v", got)
 	}
@@ -59,13 +60,13 @@ func TestDiagnostics(t *testing.T) {
 	}
 }
 
-func TestCodeLenses(t *testing.T) {
+func TestLSPCodeLenses(t *testing.T) {
 	lines := []string{"package main"}
 	ls := []model.CodeLens{{
 		Range:   model.Range{Start: model.Position{Line: 0, Column: 0}, End: model.Position{Line: 0, Column: 0}},
 		Command: model.Command{Title: "▶ gooze run", Command: "gooze.run", Arguments: []any{"./..."}},
 	}}
-	got := CodeLenses(lines, ls)
+	got := lspCodeLenses(lines, ls)
 	if len(got) != 1 || got[0].Command == nil {
 		t.Fatalf("code lenses = %+v", got)
 	}

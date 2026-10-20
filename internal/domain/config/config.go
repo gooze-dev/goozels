@@ -5,10 +5,11 @@
 // The schema is pinned from gooze's own viper keys
 // (gooze.dev/pkg/gooze/cmd/config.go). Note that gooze's canonical config file
 // is named gooze.yaml (viper config name "gooze", type yaml); the README's
-// ".gooze.yml" is an alias we also recognise.
+// ".gooze.yml" is an alias we also recognize.
 package config
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -47,7 +48,7 @@ type Field struct {
 var Schema = []Field{
 	{Key: "version", Kind: KindInt, Default: "1", Doc: "Config schema version."},
 	{Key: "output", Kind: KindString, Default: ".gooze-reports", Doc: "Directory where mutation reports are written."},
-	{Key: "no-cache", Kind: KindBool, Default: "false", Doc: "Disable incremental caching and force a full re-run."},
+	{Key: "no-cache", Kind: KindBool, Default: boolFalse, Doc: "Disable incremental caching and force a full re-run."},
 	{Key: "paths", Kind: KindObject, Doc: "Path selection settings.", Children: []Field{
 		{Key: "exclude", Kind: KindStringList, Default: "[]", Doc: "Regular-expression patterns of files to skip (e.g. '^vendor/')."},
 	}},
@@ -58,7 +59,7 @@ var Schema = []Field{
 	{Key: "log", Kind: KindObject, Doc: "Logging settings.", Children: []Field{
 		{Key: "filename", Kind: KindString, Default: ".gooze.log", Doc: "Log file path."},
 		{Key: "level", Kind: KindEnum, Default: "info", IntEnumOK: true, Enum: []string{"debug", "info", "warn", "error"}, Doc: "Log severity. Accepts debug/info/warn/error or a numeric slog level."},
-		{Key: "verbose", Kind: KindBool, Default: "false", Doc: "Enable debug-level logging."},
+		{Key: "verbose", Kind: KindBool, Default: boolFalse, Doc: "Enable debug-level logging."},
 		{Key: "max_size", Kind: KindInt, Default: "10", Doc: "Max log size in MiB before rotation."},
 		{Key: "max_backups", Kind: KindInt, Default: "3", Doc: "Number of rotated log files to retain."},
 		{Key: "max_age", Kind: KindInt, Default: "28", Doc: "Days to keep rotated logs."},
@@ -66,19 +67,13 @@ var Schema = []Field{
 	}},
 }
 
-// ConfigFileNames are the basenames gooze (and this server) recognise as the
+// ConfigFileNames are the basenames gooze (and this server) recognize as the
 // configuration file.
 var ConfigFileNames = []string{"gooze.yaml", "gooze.yml", ".gooze.yaml", ".gooze.yml"}
 
 // IsConfigFile reports whether the given file basename is a gooze config file.
 func IsConfigFile(base string) bool {
-	for _, n := range ConfigFileNames {
-		if base == n {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(ConfigFileNames, base)
 }
 
 // ChildrenAt returns the valid child fields at the given key path (empty path =
@@ -170,27 +165,20 @@ func (f Field) validateEnum(raw string) string {
 		}
 	}
 
-	if !contains(f.Enum, strings.ToLower(raw)) {
+	if !slices.Contains(f.Enum, strings.ToLower(raw)) {
 		return "expected one of: " + strings.Join(f.Enum, ", ")
 	}
 
 	return ""
 }
 
+// boolFalse is the literal YAML false, the default for most boolean options.
+const boolFalse = "false"
+
 func isBool(s string) bool {
 	switch strings.ToLower(s) {
-	case "true", "false":
+	case "true", boolFalse:
 		return true
-	}
-
-	return false
-}
-
-func contains(ss []string, s string) bool {
-	for _, x := range ss {
-		if x == s {
-			return true
-		}
 	}
 
 	return false
