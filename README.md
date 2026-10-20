@@ -30,7 +30,7 @@ keep **all** your normal Go features and simply get gooze ones on top.
   leaving the editor.
 - **Report results, in your editor.** After a run, goozels reads gooze's reports
   and shows each file's mutation score at the top — e.g. *"gooze: 2/10 mutants
-  survived — score 80%"* — and marks the approximate spots where mutants survived.
+  survived — score 80.00%"* — and marks the approximate spots where mutants survived.
 
 **In your `gooze.yaml`**
 

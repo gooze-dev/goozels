@@ -3,7 +3,9 @@ package controller
 import (
 	"context"
 
-	"gooze.dev/pkg/goozels/internal/domain/report"
+	"gooze.dev/pkg/gooze/pkg/config"
+	"gooze.dev/pkg/gooze/pkg/report"
+
 	"gooze.dev/pkg/goozels/pkg/lsp"
 )
 
@@ -13,7 +15,8 @@ import (
 type Deps struct {
 	Gooze     GoozeRunner
 	Documents Documents
-	Reports   Reports
+	Reports   report.Reader
+	Config    config.Registry
 }
 
 // GoozeRunner executes gooze subcommands. It is the port the controller depends
@@ -31,10 +34,4 @@ type Documents interface {
 	Close(uri string)
 	Text(uri string) (string, bool)
 	URIs() []string
-}
-
-// Reports is the port for reading gooze mutation reports from a workspace.
-// Implemented by adapter/reportstore.Workspace.
-type Reports interface {
-	ReportForFile(workdir, absPath string) (report.FileReport, bool)
 }

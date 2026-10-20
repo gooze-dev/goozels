@@ -13,8 +13,7 @@
   ],
   "activationEvents": [
     "onLanguage:go",
-    "workspaceContains:**/gooze.{yaml,yml}",
-    "workspaceContains:**/.gooze.{yaml,yml}"
+    "workspaceContains:**/gooze.yaml"
   ],
   "main": "./out/extension.js",
   "contributes": {

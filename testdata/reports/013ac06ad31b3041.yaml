@@ -1,0 +1,17 @@
+source:
+    origin:
+        shortpath: calc/calc.go
+        fullpath: /home/mouse/workspace/goozels/testdata/project/calc/calc.go
+        hash: 798929346410d39f99f09961e02c0ab4b5ae8b3edd5bf3d7772da6b036d02564
+    test:
+        shortpath: calc/calc_test.go
+        fullpath: /home/mouse/workspace/goozels/testdata/project/calc/calc_test.go
+        hash: d8993f9995973eda27bb5f25aebc50cf7c0fd445bf9c9b7f6efe12943b58be3b
+    package: calc
+result:
+    - name: comparison
+      version: 1
+      mutations:
+        - mutationid: 0d29ad65b421100bda51d98ace8cfd5d692b3e5590842630cf6b7c6edc26ef7d
+          status: 0
+diff: null

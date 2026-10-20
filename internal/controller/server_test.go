@@ -6,9 +6,11 @@ import (
 	"testing"
 	"time"
 
+	"gooze.dev/pkg/gooze/pkg/config"
+	"gooze.dev/pkg/gooze/pkg/report"
+
 	"gooze.dev/pkg/goozels/internal/adapter/docstore"
 	"gooze.dev/pkg/goozels/internal/adapter/goozecli"
-	"gooze.dev/pkg/goozels/internal/adapter/reportstore"
 	"gooze.dev/pkg/goozels/pkg/jsonrpc"
 )
 
@@ -17,7 +19,8 @@ func productionDeps(goozePath string) Deps {
 	return Deps{
 		Gooze:     goozecli.New(goozePath),
 		Documents: docstore.New(),
-		Reports:   reportstore.Workspace{},
+		Reports:   report.NewDirReader(),
+		Config:    config.NewRegistry(),
 	}
 }
 

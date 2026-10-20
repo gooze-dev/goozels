@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestInitializeMergesTriggerCharacters(t *testing.T) {
@@ -116,6 +117,27 @@ func TestConfigCompletionHandledLocally(t *testing.T) {
 		default:
 			return
 		}
+	}
+}
+
+func TestGoozeYmlForwardedToGopls(t *testing.T) {
+	h := newHarness(t, goplsResponder)
+	h.send(t, "initialize", "1", map[string]any{"capabilities": map[string]any{}})
+	h.awaitResponse(t, "1")
+	drainGopls(h)
+
+	uri := "file:///proj/gooze.yml"
+	h.send(t, "textDocument/didOpen", "", map[string]any{
+		"textDocument": map[string]any{"uri": uri, "languageId": "yaml", "version": 1, "text": "bogus: 1\n"},
+	})
+
+	select {
+	case m := <-h.goplsSeen:
+		if m.Method != "textDocument/didOpen" || uriOf(m.Params) != uri {
+			t.Errorf("gopls got %s for %s, want didOpen for %s", m.Method, uriOf(m.Params), uri)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("gooze.yml was not forwarded to gopls")
 	}
 }
 

@@ -31,6 +31,44 @@ rules:
       - pattern-not: exec.Command("...", "-c", "...", ...)
       - pattern-not: exec.CommandContext($CTX, "...", "-c", "...", ...)
 
+- id: goozels-archive-entry-path-traversal
+  languages: [go]
+  severity: ERROR
+  message: >-
+    Archive entry name is joined onto a destination directory without
+    validation. A crafted entry such as `../../etc/passwd` escapes the
+    extraction directory. Extract through `os.OpenRoot(destDir)` or reject
+    names that are absolute or contain `..` before joining.
+  metadata:
+    category: security
+    cwe: 'CWE-22: Improper Limitation of a Pathname to a Restricted Directory'
+    confidence: MEDIUM
+  patterns:
+  - pattern-either:
+    - pattern: 'filepath.Join($DEST, ($H : *tar.Header).Name)'
+    - pattern: 'filepath.Join($DEST, ($F : *zip.File).Name)'
+    - pattern: 'path.Join($DEST, ($H : *tar.Header).Name)'
+    - pattern: 'path.Join($DEST, ($F : *zip.File).Name)'
+    - patterns:
+      - pattern-inside: |
+          $H, $ERR := $TR.Next()
+          ...
+      - pattern-either:
+        - pattern: filepath.Join($DEST, $H.Name)
+        - pattern: path.Join($DEST, $H.Name)
+  # Already validated against ".." or checked to stay under the destination.
+  - pattern-not-inside: |
+      if strings.Contains($X.Name, "..") { ... }
+      ...
+  - pattern-not-inside: |
+      $P := filepath.Join($DEST, $X.Name)
+      ...
+      if !strings.HasPrefix($P, ...) { ... }
+  - pattern-not-inside: |
+      $P := filepath.Join($DEST, $X.Name)
+      ...
+      if strings.HasPrefix($P, ...) { ... }
+
 - id: goozels-hardcoded-tmp-path
   languages: [go]
   severity: WARNING

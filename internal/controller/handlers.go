@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 
 	"gooze.dev/pkg/goozels/internal/domain/document"
-	"gooze.dev/pkg/goozels/internal/domain/goozeyml"
 	"gooze.dev/pkg/goozels/internal/domain/ignore"
 	"gooze.dev/pkg/goozels/pkg/jsonrpc"
 	"gooze.dev/pkg/goozels/pkg/lsp"
@@ -48,7 +47,7 @@ func (s *Server) handleClientRequest(msg *jsonrpc.Message) {
 	default:
 		// Other requests on a config document can't be served by gopls (it never
 		// saw the file); answer null. Everything else is forwarded.
-		if isConfigURI(uriOf(msg.Params)) {
+		if s.isConfigURI(uriOf(msg.Params)) {
 			s.respondNull(msg)
 			return
 		}
@@ -62,7 +61,7 @@ func (s *Server) handleClientRequest(msg *jsonrpc.Message) {
 func (s *Server) routePositional(msg *jsonrpc.Message, configFn func(*jsonrpc.Message), goFn func()) {
 	uri := uriOf(msg.Params)
 	switch {
-	case isConfigURI(uri):
+	case s.isConfigURI(uri):
 		configFn(msg)
 	default:
 		goFn()
@@ -80,7 +79,7 @@ func (s *Server) handleClientNotification(msg *jsonrpc.Message) {
 	default:
 		// Swallow notifications about config documents (gopls doesn't track
 		// them); forward everything else.
-		if uri := uriOf(msg.Params); uri != "" && isConfigURI(uri) {
+		if uri := uriOf(msg.Params); uri != "" && s.isConfigURI(uri) {
 			return
 		}
 
@@ -123,7 +122,7 @@ func (s *Server) onDidOpen(msg *jsonrpc.Message) {
 	td := p.TextDocument
 	s.store.Open(td.URI, td.Text, td.Version)
 
-	if isConfigURI(td.URI) {
+	if s.isConfigURI(td.URI) {
 		s.publishConfig(td.URI)
 		return // never forward YAML to gopls
 	}
@@ -140,7 +139,7 @@ func (s *Server) onDidChange(msg *jsonrpc.Message) {
 
 	s.store.Change(p.TextDocument.URI, p.TextDocument.Version, p.ContentChanges)
 
-	if isConfigURI(p.TextDocument.URI) {
+	if s.isConfigURI(p.TextDocument.URI) {
 		s.publishConfig(p.TextDocument.URI)
 		return
 	}
@@ -160,7 +159,7 @@ func (s *Server) onDidClose(msg *jsonrpc.Message) {
 	uri := p.TextDocument.URI
 	s.store.Close(uri)
 
-	if isConfigURI(uri) {
+	if s.isConfigURI(uri) {
 		s.notify("textDocument/publishDiagnostics", lsp.PublishDiagnosticsParams{URI: uri, Diagnostics: []lsp.Diagnostic{}})
 		return
 	}
@@ -181,7 +180,7 @@ func (s *Server) configCompletion(msg *jsonrpc.Message) {
 	}
 
 	text, _ := s.store.Text(uri)
-	items := goozeyml.Complete(text, lineNum, col)
+	items := s.goozeyml.Complete(text, lineNum, col)
 	s.respond(msg, lspCompletion(lineNum, line, lsp.CompletionKindProperty, items))
 }
 
@@ -194,7 +193,7 @@ func (s *Server) configHover(msg *jsonrpc.Message) {
 
 	text, _ := s.store.Text(uri)
 
-	h, ok := goozeyml.Hover(text, lineNum, col)
+	h, ok := s.goozeyml.Hover(text, lineNum, col)
 	if !ok {
 		s.respondNull(msg)
 		return
@@ -288,7 +287,7 @@ func (s *Server) publishConfig(uri string) {
 		return
 	}
 
-	diags := lspDiagnostics(text, goozeyml.Diagnose(text))
+	diags := lspDiagnostics(text, s.goozeyml.Diagnose(text))
 	s.notify("textDocument/publishDiagnostics", lsp.PublishDiagnosticsParams{URI: uri, Diagnostics: diags})
 }
 

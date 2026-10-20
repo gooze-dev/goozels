@@ -3,8 +3,11 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"path/filepath"
 	"strings"
 	"time"
+
+	"gooze.dev/pkg/gooze/pkg/config"
 
 	"gooze.dev/pkg/goozels/internal/domain/command"
 	"gooze.dev/pkg/goozels/internal/domain/document"
@@ -22,7 +25,7 @@ const goozeRunTimeout = time.Hour
 func (s *Server) handleCodeLens(msg *jsonrpc.Message) {
 	uri := uriOf(msg.Params)
 	switch {
-	case isConfigURI(uri):
+	case s.isConfigURI(uri):
 		s.respond(msg, []lsp.CodeLens{})
 	case lsp.IsGoURI(uri):
 		s.registerAugment(msg.IDKey(), func(resp *jsonrpc.Message) { s.augmentCodeLens(msg, resp) })
@@ -157,8 +160,15 @@ func (s *Server) refreshReports() {
 // reportDiagnostics returns gooze report-derived diagnostics for a .go file: a
 // summary plus best-effort survivor markers. It returns nil when no report exists.
 func (s *Server) reportDiagnostics(uri string) []model.Diagnostic {
-	rep, ok := s.reports.ReportForFile(s.getWorkdir(), lsp.URIPath(uri))
-	if !ok {
+	workdir := s.getWorkdir()
+
+	all, err := s.reports.ReadDir(filepath.Join(workdir, config.DefaultReportsDir))
+	if err != nil {
+		return nil
+	}
+
+	rep := report.ForFile(all, workdir, lsp.URIPath(uri))
+	if len(rep) == 0 {
 		return nil
 	}
 

@@ -26,9 +26,6 @@ On the **Mappings** tab add:
 |------|-------|
 | Language | `Go` |
 | File name pattern | `gooze.yaml` |
-| File name pattern | `gooze.yml` |
-| File name pattern | `.gooze.yaml` |
-| File name pattern | `.gooze.yml` |
 
 Apply, and reopen a `.go` file or a `gooze.yaml`.
 
@@ -42,7 +39,7 @@ Apply, and reopen a `.go` file or a `gooze.yaml`.
 
 > **GoLand note:** GoLand already has its own Go engine, so for `.go` files the
 > goozels (gopls-backed) completions appear *in addition* to GoLand's. If you find
-> that noisy, map goozels to the `gooze.{yaml,yml}` patterns only and keep using
+> that noisy, map goozels to the `gooze.yaml` pattern only and keep using
 > GoLand's native Go support — the config features and execute commands still work.
 > In IntelliJ IDEA (without the bundled Go engine) you can map `Go` as well to get
 > full Go intelligence through goozels.

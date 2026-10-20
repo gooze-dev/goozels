@@ -24,20 +24,17 @@ if not configs.goozels_config then
     default_config = {
       cmd = { 'goozels' },
       filetypes = { 'yaml.gooze' },
-      root_dir = lspconfig.util.root_pattern('gooze.yaml', 'gooze.yml', '.gooze.yaml', '.gooze.yml', '.git'),
+      root_dir = lspconfig.util.root_pattern('gooze.yaml', '.git'),
       single_file_support = true,
     },
   }
 end
 lspconfig.goozels_config.setup({})
 
--- Map the gooze config files to a dedicated filetype so the server attaches.
+-- Map the gooze config file to a dedicated filetype so the server attaches.
 vim.filetype.add({
   filename = {
     ['gooze.yaml'] = 'yaml.gooze',
-    ['gooze.yml'] = 'yaml.gooze',
-    ['.gooze.yaml'] = 'yaml.gooze',
-    ['.gooze.yml'] = 'yaml.gooze',
   },
 })
 ```

@@ -5,12 +5,27 @@
 package goozeyml
 
 import (
+	"fmt"
+	"slices"
+	"strconv"
 	"strings"
 
-	"gooze.dev/pkg/goozels/internal/domain/config"
+	"gooze.dev/pkg/gooze/pkg/config"
+
 	"gooze.dev/pkg/goozels/internal/domain/document"
 	"gooze.dev/pkg/goozels/internal/model"
 )
+
+// Editor serves completion, hover and diagnostics for the config file described
+// by a registry.
+type Editor struct {
+	registry config.Registry
+}
+
+// New returns an Editor for the configuration schema of registry.
+func New(registry config.Registry) Editor {
+	return Editor{registry: registry}
+}
 
 // entry is a parsed "key: value" mapping line.
 type entry struct {
@@ -111,23 +126,23 @@ func pathAtIndent(entries []entry, indent int) (path []string, siblings map[stri
 
 // Complete returns config completions for a position on the given line: enum
 // values when inside a "key:" value, otherwise config keys for the indent level.
-func Complete(text string, lineNum, col int) []model.CompletionItem {
+func (ed Editor) Complete(text string, lineNum, col int) []model.CompletionItem {
 	lines := document.Lines(text)
 	if lineNum < 0 || lineNum >= len(lines) {
 		return nil
 	}
 
 	line := lines[lineNum]
-	if items, ok := valueCompletion(lines, lineNum, line, col); ok {
+	if items, ok := ed.valueCompletion(lines, lineNum, line, col); ok {
 		return items
 	}
 
-	return keyCompletion(lines, lineNum, line, col)
+	return ed.keyCompletion(lines, lineNum, line, col)
 }
 
 // valueCompletion offers enum values when col is in the value position of a
 // "key:" line whose field is an enum. ok is false when it doesn't apply.
-func valueCompletion(lines []string, lineNum int, line string, col int) ([]model.CompletionItem, bool) {
+func (ed Editor) valueCompletion(lines []string, lineNum int, line string, col int) ([]model.CompletionItem, bool) {
 	e, ok := parseEntry(lineNum, line)
 	if !ok || col <= e.valueStart-1 || e.keyEnd >= col {
 		return nil, false
@@ -135,7 +150,7 @@ func valueCompletion(lines []string, lineNum int, line string, col int) ([]model
 
 	path, _ := pathAtIndent(parseEntries(lines[:lineNum]), e.indent)
 
-	f, ok := config.Lookup(append(path, e.key))
+	f, ok := ed.lookup(append(path, e.key))
 	if !ok || f.Kind != config.KindEnum {
 		return nil, false
 	}
@@ -145,7 +160,7 @@ func valueCompletion(lines []string, lineNum int, line string, col int) ([]model
 
 // keyCompletion offers config-key completions for the current indent level,
 // excluding sibling keys already present.
-func keyCompletion(lines []string, lineNum int, line string, col int) []model.CompletionItem {
+func (ed Editor) keyCompletion(lines []string, lineNum int, line string, col int) []model.CompletionItem {
 	indent := leadingSpaces(line)
 	if col < indent {
 		return nil
@@ -161,13 +176,13 @@ func keyCompletion(lines []string, lineNum int, line string, col int) []model.Co
 
 	var items []model.CompletionItem
 
-	for _, f := range config.ChildrenAt(path) {
-		if siblings[f.Key] || !strings.HasPrefix(f.Key, prefix) {
+	for _, f := range ed.childrenAt(path) {
+		if siblings[f.Name] || !strings.HasPrefix(f.Name, prefix) {
 			continue
 		}
 
 		items = append(items, model.CompletionItem{
-			Label:        f.Key,
+			Label:        f.Name,
 			Detail:       kindLabel(f),
 			Doc:          f.Doc,
 			InsertText:   insertText(f),
@@ -180,7 +195,7 @@ func keyCompletion(lines []string, lineNum int, line string, col int) []model.Co
 }
 
 // Hover returns documentation for the config key under the cursor.
-func Hover(text string, lineNum, col int) (model.Hover, bool) {
+func (ed Editor) Hover(text string, lineNum, col int) (model.Hover, bool) {
 	lines := document.Lines(text)
 	if lineNum < 0 || lineNum >= len(lines) {
 		return model.Hover{}, false
@@ -195,14 +210,14 @@ func Hover(text string, lineNum, col int) (model.Hover, bool) {
 
 	path, _ := pathAtIndent(parseEntries(lines[:lineNum]), e.indent)
 
-	f, ok := config.Lookup(append(path, e.key))
+	f, ok := ed.lookup(append(path, e.key))
 	if !ok {
 		return model.Hover{}, false
 	}
 
 	md := "**" + strings.Join(append(path, e.key), ".") + "** _(" + kindLabel(f) + ")_\n\n" + f.Doc
-	if f.Default != "" {
-		md += "\n\nDefault: `" + f.Default + "`"
+	if def := defaultText(f.Default); def != "" {
+		md += "\n\nDefault: `" + def + "`"
 	}
 
 	return model.Hover{
@@ -215,7 +230,7 @@ func Hover(text string, lineNum, col int) (model.Hover, bool) {
 }
 
 // Diagnose validates the whole config document: unknown keys and bad scalar values.
-func Diagnose(text string) []model.Diagnostic {
+func (ed Editor) Diagnose(text string) []model.Diagnostic {
 	lines := document.Lines(text)
 	entries := parseEntries(lines)
 
@@ -232,7 +247,7 @@ func Diagnose(text string) []model.Diagnostic {
 		path := entryPath(stack, e)
 		stack = append(stack, e)
 
-		f, ok := config.Lookup(path)
+		f, ok := ed.lookup(path)
 		if !ok {
 			diags = append(diags, model.Diagnostic{
 				Range:    keyRange(e),
@@ -248,7 +263,7 @@ func Diagnose(text string) []model.Diagnostic {
 			continue
 		}
 
-		if msg := f.ValidateScalar(stripQuotes(e.value)); msg != "" {
+		if msg := validateScalar(f, stripQuotes(e.value)); msg != "" {
 			diags = append(diags, model.Diagnostic{
 				Range: model.Range{
 					Start: model.Position{Line: e.line, Column: e.valueStart},
@@ -312,31 +327,105 @@ func keyRange(e entry) model.Range {
 	}
 }
 
-func insertText(f config.Field) string {
-	if f.Kind == config.KindObject {
-		return f.Key + ":"
-	}
-
-	return f.Key + ": "
+// lookup resolves a key path to its field.
+func (ed Editor) lookup(path []string) (config.Field, bool) {
+	return ed.registry.Lookup(strings.Join(path, "."))
 }
 
-func kindLabel(f config.Field) string {
+// childrenAt returns the fields valid at a key path (empty path = top level),
+// or nil when the path does not resolve to an object.
+func (ed Editor) childrenAt(path []string) []config.Field {
+	if len(path) == 0 {
+		return ed.registry.Schema()
+	}
+
+	f, ok := ed.lookup(path)
+	if !ok || f.Kind != config.KindObject {
+		return nil
+	}
+
+	return f.Children
+}
+
+// validateScalar checks a raw (unquoted, trimmed) scalar value against a field's
+// kind, returning a human-readable problem or "" when valid. Objects, strings
+// and lists are not validated.
+func validateScalar(f config.Field, raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+
 	switch f.Kind {
-	case config.KindObject:
-		return "object"
-	case config.KindString:
-		return "string"
 	case config.KindBool:
-		return "bool"
+		if !isBoolWord(raw) {
+			return "expected a boolean (true or false)"
+		}
 	case config.KindInt:
-		return "int"
-	case config.KindStringList:
-		return "string[]"
+		if _, err := strconv.Atoi(raw); err != nil {
+			return "expected an integer"
+		}
 	case config.KindEnum:
-		return "enum: " + strings.Join(f.Enum, "|")
+		return validateEnum(f, raw)
+	case config.KindObject, config.KindString, config.KindStringList:
 	}
 
 	return ""
+}
+
+// validateEnum checks raw against an enum field's allowed values, accepting an
+// integer when the field allows one.
+func validateEnum(f config.Field, raw string) string {
+	if f.IntEnum {
+		if _, err := strconv.Atoi(raw); err == nil {
+			return ""
+		}
+	}
+
+	if !slices.Contains(f.Enum, strings.ToLower(raw)) {
+		return "expected one of: " + strings.Join(f.Enum, ", ")
+	}
+
+	return ""
+}
+
+func isBoolWord(raw string) bool {
+	switch strings.ToLower(raw) {
+	case "true", "false":
+		return true
+	}
+
+	return false
+}
+
+// defaultText renders a field's default value, or "" when it has none.
+func defaultText(v any) string {
+	switch d := v.(type) {
+	case nil:
+		return ""
+	case string:
+		return d
+	case []string:
+		return "[" + strings.Join(d, ", ") + "]"
+	default:
+		return fmt.Sprint(d)
+	}
+}
+
+func insertText(f config.Field) string {
+	if f.Kind == config.KindObject {
+		return f.Name + ":"
+	}
+
+	return f.Name + ": "
+}
+
+func kindLabel(f config.Field) string {
+	if f.Kind == config.KindEnum {
+		return "enum: " + strings.Join(f.Enum, "|")
+	}
+
+	return f.Kind.String()
 }
 
 func leadingSpaces(line string) int {

@@ -1,0 +1,17 @@
+source:
+    origin:
+        shortpath: calc/calc.go
+        fullpath: /home/mouse/workspace/goozels/testdata/project/calc/calc.go
+        hash: 798929346410d39f99f09961e02c0ab4b5ae8b3edd5bf3d7772da6b036d02564
+    test:
+        shortpath: calc/calc_test.go
+        fullpath: /home/mouse/workspace/goozels/testdata/project/calc/calc_test.go
+        hash: d8993f9995973eda27bb5f25aebc50cf7c0fd445bf9c9b7f6efe12943b58be3b
+    package: calc
+result:
+    - name: arithmetic
+      version: 1
+      mutations:
+        - mutationid: 86965ae5266f5eea24891b0247700770eb5f5132591d9fcd6e0bad1540d3ba4f
+          status: 0
+diff: null

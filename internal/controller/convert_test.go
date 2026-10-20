@@ -1,11 +1,24 @@
 package controller
 
 import (
+	"io"
 	"testing"
 
 	"gooze.dev/pkg/goozels/internal/model"
 	"gooze.dev/pkg/goozels/pkg/lsp"
 )
+
+func TestIsConfigURI(t *testing.T) {
+	s := NewServer(io.Discard, io.Discard, productionDeps("gooze"))
+	if !s.isConfigURI("file:///proj/gooze.yaml") {
+		t.Error("gooze.yaml is not a config file")
+	}
+	for _, uri := range []string{"file:///proj/gooze.yml", "file:///proj/.gooze.yaml", "file:///proj/.gooze.yml", "file:///proj/main.go"} {
+		if s.isConfigURI(uri) {
+			t.Errorf("%s is a config file, gooze only reads gooze.yaml", uri)
+		}
+	}
+}
 
 func TestLSPCompletion(t *testing.T) {
 	line := "//gooze:ignore ar"

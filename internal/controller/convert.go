@@ -3,14 +3,15 @@ package controller
 import (
 	"path"
 
-	"gooze.dev/pkg/goozels/internal/domain/config"
 	"gooze.dev/pkg/goozels/internal/domain/document"
 	"gooze.dev/pkg/goozels/internal/model"
 	"gooze.dev/pkg/goozels/pkg/lsp"
 )
 
 // isConfigURI reports whether the URI names a gooze config file.
-func isConfigURI(uri string) bool { return config.IsConfigFile(path.Base(lsp.URIPath(uri))) }
+func (s *Server) isConfigURI(uri string) bool {
+	return s.config.IsConfigFile(path.Base(lsp.URIPath(uri)))
+}
 
 // lspCompletion builds an LSP completion list from domain items, all of which
 // apply to lineNum/line. kind is the LSP CompletionItemKind to tag them with.
