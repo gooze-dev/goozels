@@ -291,14 +291,32 @@ func (ed Editor) Diagnose(text string) []model.Diagnostic {
 
 // diagnoseEntry checks one mapping entry against the config schema.
 func (ed Editor) diagnoseEntry(lines []string, path []string, e entry) (model.Diagnostic, bool) {
-	f, ok := ed.lookup(path)
-	if !ok {
+	valueRange := model.Range{
+		Start: model.Position{Line: e.line, Column: e.valueStart},
+		End:   model.Position{Line: e.line, Column: len(lines[e.line])},
+	}
+
+	// Equivalent: no string sorts below "", so > "" is != "".
+	if open := unclosedFlow(e.value); open != "" { //gooze:ignore comparison
 		return model.Diagnostic{
-			Range:    keyRange(e),
-			Severity: model.SeverityWarning,
-			Message:  "unknown gooze config key \"" + strings.Join(path, ".") + "\"",
+			Range:    valueRange,
+			Severity: model.SeverityError,
+			Message:  "invalid YAML: \"" + open + "\" is never closed; gooze will ignore this whole file and use its defaults",
 			Source:   source,
 		}, true
+	}
+
+	key := strings.Join(path, ".")
+
+	f, ok := ed.lookup(path)
+	if !ok {
+		msg := "unknown gooze config key \"" + key + "\""
+		// Equivalent: no string sorts below "", so > "" is != "" (>= "" is killed by a test).
+		if s := ed.suggest(key); s != "" { //gooze:ignore comparison
+			msg += "; did you mean \"" + s + "\"?"
+		}
+
+		return model.Diagnostic{Range: keyRange(e), Severity: model.SeverityWarning, Message: msg, Source: source}, true
 	}
 
 	if e.value == "" {
@@ -311,12 +329,9 @@ func (ed Editor) diagnoseEntry(lines []string, path []string, e entry) (model.Di
 	}
 
 	return model.Diagnostic{
-		Range: model.Range{
-			Start: model.Position{Line: e.line, Column: e.valueStart},
-			End:   model.Position{Line: e.line, Column: len(lines[e.line])},
-		},
+		Range:    valueRange,
 		Severity: model.SeverityError,
-		Message:  "invalid value for \"" + strings.Join(path, ".") + "\": " + msg,
+		Message:  "invalid value for \"" + key + "\": " + msg,
 		Source:   source,
 	}, true
 }
