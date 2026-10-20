@@ -24,7 +24,7 @@ func Start(path string, args ...string) (*Process, error) {
 	}
 
 	// The gopls path and args are operator-controlled (flags/env), not user input.
-	cmd := exec.CommandContext(context.Background(), path, args...)
+	cmd := exec.CommandContext(context.Background(), path, args...) //nolint:gosec
 	cmd.Stderr = os.Stderr
 
 	stdin, err := cmd.StdinPipe()

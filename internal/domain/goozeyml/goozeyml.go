@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"gooze.dev/pkg/goozels/internal/domain/config"
+	"gooze.dev/pkg/goozels/internal/domain/document"
 	"gooze.dev/pkg/goozels/internal/model"
 )
 
@@ -111,7 +112,7 @@ func pathAtIndent(entries []entry, indent int) (path []string, siblings map[stri
 // Complete returns config completions for a position on the given line: enum
 // values when inside a "key:" value, otherwise config keys for the indent level.
 func Complete(text string, lineNum, col int) []model.CompletionItem {
-	lines := model.Lines(text)
+	lines := document.Lines(text)
 	if lineNum < 0 || lineNum >= len(lines) {
 		return nil
 	}
@@ -180,7 +181,7 @@ func keyCompletion(lines []string, lineNum int, line string, col int) []model.Co
 
 // Hover returns documentation for the config key under the cursor.
 func Hover(text string, lineNum, col int) (model.Hover, bool) {
-	lines := model.Lines(text)
+	lines := document.Lines(text)
 	if lineNum < 0 || lineNum >= len(lines) {
 		return model.Hover{}, false
 	}
@@ -215,7 +216,7 @@ func Hover(text string, lineNum, col int) (model.Hover, bool) {
 
 // Diagnose validates the whole config document: unknown keys and bad scalar values.
 func Diagnose(text string) []model.Diagnostic {
-	lines := model.Lines(text)
+	lines := document.Lines(text)
 	entries := parseEntries(lines)
 
 	var (
@@ -228,12 +229,7 @@ func Diagnose(text string) []model.Diagnostic {
 			stack = stack[:len(stack)-1]
 		}
 
-		path := make([]string, 0, len(stack)+1)
-		for _, s := range stack {
-			path = append(path, s.key)
-		}
-
-		path = append(path, e.key)
+		path := entryPath(stack, e)
 		stack = append(stack, e)
 
 		f, ok := config.Lookup(path)
@@ -266,6 +262,16 @@ func Diagnose(text string) []model.Diagnostic {
 	}
 
 	return diags
+}
+
+// entryPath is the dotted key path of e under its enclosing mapping entries.
+func entryPath(stack []entry, e entry) []string {
+	path := make([]string, 0, len(stack)+1)
+	for _, s := range stack {
+		path = append(path, s.key)
+	}
+
+	return append(path, e.key)
 }
 
 func enumItems(f config.Field, line string, valStart, col int) []model.CompletionItem {
@@ -361,8 +367,8 @@ func isWordByte(c byte) bool {
 }
 
 func stripComment(s string) string {
-	if i := strings.IndexByte(s, '#'); i >= 0 {
-		return strings.TrimSpace(s[:i])
+	if before, _, ok := strings.Cut(s, "#"); ok {
+		return strings.TrimSpace(before)
 	}
 
 	return s

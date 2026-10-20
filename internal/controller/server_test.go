@@ -6,8 +6,20 @@ import (
 	"testing"
 	"time"
 
-	"gooze.dev/pkg/goozels/internal/adapter/jsonrpc"
+	"gooze.dev/pkg/goozels/internal/adapter/docstore"
+	"gooze.dev/pkg/goozels/internal/adapter/goozecli"
+	"gooze.dev/pkg/goozels/internal/adapter/reportstore"
+	"gooze.dev/pkg/goozels/pkg/jsonrpc"
 )
+
+// productionDeps wires the real adapters, as cmd/goozels does.
+func productionDeps(goozePath string) Deps {
+	return Deps{
+		Gooze:     goozecli.New(goozePath),
+		Documents: docstore.New(),
+		Reports:   reportstore.Workspace{},
+	}
+}
 
 // --- shared test harness ---
 
@@ -31,7 +43,7 @@ func newHarnessWithGooze(t *testing.T, fakeGopls func(req *jsonrpc.Message) *jso
 	g2sR, g2sW := io.Pipe() // gopls -> server
 	s2gR, s2gW := io.Pipe() // server -> gopls
 
-	srv := NewServer(s2cW, s2gW, goozePath)
+	srv := NewServer(s2cW, s2gW, productionDeps(goozePath))
 	go func() { _ = srv.Run(c2sR, g2sR) }()
 
 	h := &harness{
@@ -174,7 +186,7 @@ func goplsResponder(req *jsonrpc.Message) *jsonrpc.Message {
 // --- server.go tests ---
 
 func TestNewServerDefaultWorkdir(t *testing.T) {
-	s := NewServer(io.Discard, io.Discard, "gooze")
+	s := NewServer(io.Discard, io.Discard, productionDeps("gooze"))
 	if got := s.getWorkdir(); got != "." {
 		t.Errorf("default workdir = %q, want %q", got, ".")
 	}

@@ -1,0 +1,48 @@
+---
+# Security rules for goozels (mirrors gooze's .semgrep/security.yaml): an LSP
+# proxy that spawns gopls and runs the gooze CLI through os/exec on behalf of
+# editor commands.
+#
+# Validate with:  semgrep --validate --config .semgrep/
+rules:
+- id: goozels-exec-command-built-from-strings
+  languages: [go]
+  severity: ERROR
+  message: >-
+    os/exec command or argument is assembled from a formatted or concatenated
+    string. Pass the program and each argument as separate values instead of
+    building a command line, and never route it through `sh -c`.
+  metadata:
+    category: security
+    cwe: 'CWE-78: Improper Neutralization of Special Elements used in an OS Command'
+    confidence: HIGH
+  patterns:
+  - pattern-either:
+    - pattern: exec.Command(..., fmt.Sprintf(...), ...)
+    - pattern: exec.CommandContext($CTX, ..., fmt.Sprintf(...), ...)
+    - pattern: exec.Command(..., $A + $B, ...)
+    - pattern: exec.CommandContext($CTX, ..., $A + $B, ...)
+    - pattern: exec.Command(..., strings.Join(...), ...)
+    - pattern: exec.CommandContext($CTX, ..., strings.Join(...), ...)
+    - patterns:
+      - pattern-either:
+        - pattern: exec.Command("=~/^(sh|bash|dash|zsh)$/", "-c", $CMD, ...)
+        - pattern: exec.CommandContext($CTX, "=~/^(sh|bash|dash|zsh)$/", "-c", $CMD, ...)
+      - pattern-not: exec.Command("...", "-c", "...", ...)
+      - pattern-not: exec.CommandContext($CTX, "...", "-c", "...", ...)
+
+- id: goozels-hardcoded-tmp-path
+  languages: [go]
+  severity: WARNING
+  message: >-
+    Hard-coded temporary path. Use `os.TempDir()` or `os.MkdirTemp` so the
+    location honours TMPDIR, works on every platform and cannot collide with
+    another user's files in a shared /tmp.
+  metadata:
+    category: security
+    cwe: 'CWE-377: Insecure Temporary File'
+    confidence: MEDIUM
+  paths:
+    exclude:
+    - '*_test.go'
+  pattern: '"=~/^\/(var\/)?tmp(\/|$)/"'

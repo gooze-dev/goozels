@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"gooze.dev/pkg/goozels/internal/domain/directive"
+	"gooze.dev/pkg/goozels/internal/domain/document"
 	"gooze.dev/pkg/goozels/internal/domain/mutagen"
 	"gooze.dev/pkg/goozels/internal/model"
 )
@@ -88,7 +89,7 @@ func Hover(line string, lineNum, col int) (model.Hover, bool) {
 func Diagnose(text string) []model.Diagnostic {
 	var diags []model.Diagnostic
 
-	for lineNum, line := range model.Lines(text) {
+	for lineNum, line := range document.Lines(text) {
 		d, ok := directive.ParseLine(line)
 		if !ok {
 			continue

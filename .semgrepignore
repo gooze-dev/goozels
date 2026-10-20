@@ -1,0 +1,16 @@
+# Paths semgrep skips. Keep in sync with PKG_WHITELIST in the Makefile.
+:include .gitignore
+
+# Editor integrations (TypeScript/Lua glue), not shipped Go code.
+editors/
+
+# Generated mockery output.
+**/mocks/
+
+# Local tool binaries and run artefacts.
+.bin/
+.gooze-reports/
+coverage.*
+
+# Fixture inputs for tests.
+testdata/

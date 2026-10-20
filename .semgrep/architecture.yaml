@@ -1,0 +1,125 @@
+---
+# Clean-architecture rules for goozels (mirrors gooze's .semgrep/architecture.yaml).
+#
+# Dependency direction (outer -> inner):
+#   cmd -> internal/controller -> internal/domain -> internal/model
+#   internal/adapter implements ports for the controller/domain and is wired in cmd.
+#
+# Validate with:  semgrep --validate --config .semgrep/
+rules:
+- id: goozels-arch-model-has-no-behaviour
+  languages: [go]
+  severity: WARNING
+  message: >-
+    `internal/model` holds plain data types only. Free functions belong in
+    `internal/domain` (business rules) or `internal/adapter` (I/O). Methods on
+    model types (`String()`, `Key()`, ...) are allowed.
+  metadata:
+    category: architecture
+    confidence: HIGH
+  paths:
+    include:
+    - internal/model/
+    exclude:
+    - '*_test.go'
+  patterns:
+  - pattern-either:
+    - pattern: func $FN(...) { ... }
+    - pattern: func $FN(...) $RET { ... }
+  - pattern-not: func ($RECV $T) $FN(...) { ... }
+  - pattern-not: func ($RECV $T) $FN(...) $RET { ... }
+
+- id: goozels-arch-domain-no-third-party-imports
+  languages: [go]
+  severity: WARNING
+  message: >-
+    `$PKG` is a third-party package imported from the domain/model layer. Keep
+    the core free of external dependencies: use the standard library, or put
+    the dependency behind a port implemented in `internal/adapter`.
+  metadata:
+    category: architecture
+    confidence: HIGH
+  paths:
+    include:
+    - internal/domain/
+    - internal/model/
+    exclude:
+    - '*_test.go'
+  patterns:
+  - pattern-either:
+    - pattern: import "$PKG"
+    - pattern: import $ALIAS "$PKG"
+  - metavariable-regex:
+      metavariable: $PKG
+      # First path element contains a dot => hosted module rather than the
+      # standard library; the project's own module path and golang.org/x
+      # (standard-library adjacent) are allowed.
+      regex: ^(?!gooze\.dev/pkg/goozels/|golang\.org/x/)[^/]+\.[^/]+/.*
+
+- id: goozels-arch-model-imports-project
+  languages: [go]
+  severity: ERROR
+  message: >-
+    `$PKG` is imported from `internal/model`. The model layer is the innermost
+    ring and imports nothing from the project.
+  metadata:
+    category: architecture
+    confidence: HIGH
+  paths:
+    include:
+    - internal/model/
+    exclude:
+    - '*_test.go'
+  patterns:
+  - pattern-either:
+    - pattern: import "$PKG"
+    - pattern: import $ALIAS "$PKG"
+  - metavariable-regex:
+      metavariable: $PKG
+      regex: ^gooze\.dev/pkg/goozels/
+
+- id: goozels-arch-domain-imports-outer-layer
+  languages: [go]
+  severity: ERROR
+  message: >-
+    `$PKG` is an outer layer. `internal/domain` may import `model` and its own
+    sub-packages only. Declare an interface (port) in the inner layer and inject
+    the implementation from `cmd`.
+  metadata:
+    category: architecture
+    confidence: HIGH
+  paths:
+    include:
+    - internal/domain/
+    exclude:
+    - '*_test.go'
+  patterns:
+  - pattern-either:
+    - pattern: import "$PKG"
+    - pattern: import $ALIAS "$PKG"
+  - metavariable-regex:
+      metavariable: $PKG
+      regex: ^gooze\.dev/pkg/goozels/(internal/(adapter|controller)|cmd)(/|$)
+
+- id: goozels-arch-controller-imports-outer-layer
+  languages: [go]
+  severity: ERROR
+  message: >-
+    `$PKG` is an outer layer. `internal/controller` talks to `domain` and
+    `model`, never to `adapter` or `cmd`. Declare an interface (port) in the
+    controller and inject the adapter implementation from `cmd`.
+  metadata:
+    category: architecture
+    confidence: HIGH
+  paths:
+    include:
+    - internal/controller/
+    exclude:
+    - '*_test.go'
+  patterns:
+  - pattern-either:
+    - pattern: import "$PKG"
+    - pattern: import $ALIAS "$PKG"
+  - metavariable-regex:
+      metavariable: $PKG
+      regex: ^gooze\.dev/pkg/goozels/(internal/adapter|cmd)(/|$)

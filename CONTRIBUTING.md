@@ -23,16 +23,18 @@ publishes the **union** of gopls + gooze findings.
 
 ## Layout
 
-The codebase follows the same clean-architecture layering as gooze
-(`model` → `domain` → `controller`/`adapter`, dependencies pointing inward):
+The codebase follows the same clean-architecture layering as gooze. Dependencies
+point inward (`cmd` → `controller` → `domain` → `model`); adapters implement the
+controller's ports (`internal/controller/ports.go`) and are wired in `cmd`:
 
 | Layer | Package | Responsibility |
 |-------|---------|----------------|
 | model | `internal/model` | LSP-agnostic result types (positions, completions, diagnostics, commands) |
-| domain | `internal/domain/{mutagen,directive,config,command,report}` | gooze knowledge: mutagen registry, `gooze:ignore` parser, config schema, command/code-lens definitions, report summaries |
+| domain | `internal/domain/{mutagen,directive,config,command,report,document}` | gooze knowledge: mutagen registry, `gooze:ignore` parser, config schema, command/code-lens definitions, report summaries, line splitting |
 | domain | `internal/domain/{ignore,goozeyml}` | feature logic: completion / hover / diagnostics |
-| adapter | `internal/adapter/{jsonrpc,lsp,gopls,goozecli,reportstore}` | LSP wire framing & types, model↔LSP mapping, gopls subprocess, gooze CLI runner, `.gooze-reports` YAML reader |
-| controller | `internal/controller` | the proxy engine: routing, augmentation, diagnostics merge |
+| adapter | `internal/adapter/{docstore,gopls,goozecli,reportstore}` | open-document store, gopls subprocess, gooze CLI runner, `.gooze-reports` YAML reader |
+| controller | `internal/controller` | the proxy engine: routing, augmentation, diagnostics merge, model↔LSP mapping |
+| pkg | `pkg/{jsonrpc,lsp}` | protocol libraries with no project imports: JSON-RPC framing, LSP wire types and UTF-16 helpers |
 | cmd | `cmd/goozels` | composition root |
 
 The domain and model layers know nothing about LSP or gopls and are unit-tested in
@@ -52,8 +54,9 @@ Or via the Makefile (mirrors gooze's):
 ```bash
 make build          # build the binary into ./.bin
 make test           # tests with coverage report
-make install-tools  # golangci-lint, mockery, pre-commit, cobra-cli into ./.bin
+make install-tools  # golangci-lint, mockery, pre-commit, cobra-cli, semgrep
 make lint           # golangci-lint (config in .golangci.yml)
+make semgrep        # architecture, correctness and security rules (.semgrep/)
 make fmt            # gofmt + golangci-lint formatters
 make mocks          # regenerate mocks (config in .mockery.yaml)
 make install-precommit
@@ -64,7 +67,11 @@ make install-precommit
 - `golangci-lint run` must be clean (the config matches gooze's strict set).
 - Every source file has a matching `*_test.go`.
 - Keep the domain/model layers free of LSP/gopls imports; translation lives in the
-  adapter layer.
+  controller.
+- `make semgrep` must be clean. `.semgrep/architecture.yaml` enforces the layering:
+  `model` imports nothing from the project and has no free functions, `domain`
+  never imports `adapter`/`controller`/`cmd`, and `controller` never imports
+  `adapter`/`cmd` (add a port instead).
 
 ## Editor integrations
 

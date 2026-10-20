@@ -16,6 +16,8 @@ repos:
   hooks:
   - id: yamlfmt
     args: [--mapping, '2', --sequence, '2', --offset, '0']
+    # Test fixtures are inputs; keep them byte-for-byte.
+    exclude: ^testdata/
 
 - repo: local
   hooks:
@@ -49,3 +51,15 @@ repos:
     language: system
     pass_filenames: false
     files: go\.mod$
+
+- repo: https://github.com/semgrep/pre-commit
+  rev: v1.181.0
+  hooks:
+  - id: semgrep
+    name: semgrep
+    args: [scan, --config, .semgrep/, --config, p/golang, --error, --disable-version-check, --quiet, --skip-unknown-extensions]
+    types: [go]
+    # pre-commit passes explicit file names, which bypass .semgrepignore; keep this in sync with it.
+    exclude: ^(editors/|.*/mocks/|.*/testdata/|testdata/)
+    # One semgrep process for all files: a single report and a single registry fetch of p/golang.
+    require_serial: true

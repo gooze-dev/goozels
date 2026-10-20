@@ -3,30 +3,26 @@ package controller
 import (
 	"context"
 	"encoding/json"
-	"path/filepath"
 	"strings"
 	"time"
 
-	"gooze.dev/pkg/goozels/internal/adapter/jsonrpc"
-	"gooze.dev/pkg/goozels/internal/adapter/lsp"
-	"gooze.dev/pkg/goozels/internal/adapter/reportstore"
 	"gooze.dev/pkg/goozels/internal/domain/command"
+	"gooze.dev/pkg/goozels/internal/domain/document"
 	"gooze.dev/pkg/goozels/internal/domain/report"
 	"gooze.dev/pkg/goozels/internal/model"
+	"gooze.dev/pkg/goozels/pkg/jsonrpc"
+	"gooze.dev/pkg/goozels/pkg/lsp"
 )
 
 // goozeRunTimeout bounds a single gooze invocation so a hung run can't leak.
 const goozeRunTimeout = time.Hour
-
-// reportsDirName is gooze's default reports directory, relative to the workspace.
-const reportsDirName = ".gooze-reports"
 
 // handleCodeLens serves code lenses: gooze run/list lenses are added to gopls's
 // lenses on .go files; config files have none.
 func (s *Server) handleCodeLens(msg *jsonrpc.Message) {
 	uri := uriOf(msg.Params)
 	switch {
-	case lsp.IsConfigURI(uri):
+	case isConfigURI(uri):
 		s.respond(msg, []lsp.CodeLens{})
 	case lsp.IsGoURI(uri):
 		s.registerAugment(msg.IDKey(), func(resp *jsonrpc.Message) { s.augmentCodeLens(msg, resp) })
@@ -39,7 +35,7 @@ func (s *Server) handleCodeLens(msg *jsonrpc.Message) {
 func (s *Server) augmentCodeLens(req, resp *jsonrpc.Message) {
 	uri := uriOf(req.Params)
 	text, _ := s.store.Text(uri)
-	ours := lsp.CodeLenses(model.Lines(text), command.GoFileLenses("./..."))
+	ours := lspCodeLenses(document.Lines(text), command.GoFileLenses("./..."))
 	resp.Result = mergeCodeLensResult(resp.Result, ours)
 	s.sendClient(resp)
 }
@@ -158,22 +154,19 @@ func (s *Server) refreshReports() {
 	}
 }
 
-// reportStore reads gooze reports from the workspace's reports directory.
-func (s *Server) reportStore() reportstore.Store {
-	return reportstore.New(filepath.Join(s.getWorkdir(), reportsDirName))
-}
-
 // reportDiagnostics returns gooze report-derived diagnostics for a .go file: a
 // summary plus best-effort survivor markers. It returns nil when no report exists.
 func (s *Server) reportDiagnostics(uri string) []model.Diagnostic {
-	rep, ok := s.reportStore().ReportForFile(lsp.URIPath(uri))
+	rep, ok := s.reports.ReportForFile(s.getWorkdir(), lsp.URIPath(uri))
 	if !ok {
 		return nil
 	}
 
-	diags := []model.Diagnostic{report.SummaryDiagnostic(rep)}
+	survivors := report.SurvivorDiagnostics(rep)
+	diags := make([]model.Diagnostic, 0, len(survivors)+1)
+	diags = append(diags, report.SummaryDiagnostic(rep))
 
-	return append(diags, report.SurvivorDiagnostics(rep)...)
+	return append(diags, survivors...)
 }
 
 // workspaceRoot extracts the workspace root path from initialize params.

@@ -14,6 +14,9 @@ import (
 	"sync"
 )
 
+// Version is the JSON-RPC protocol version every message carries.
+const Version = "2.0"
+
 // Message is a JSON-RPC 2.0 message (request, response, or notification). Unused
 // payload fields stay as raw JSON for transparent forwarding.
 type Message struct {
@@ -111,7 +114,7 @@ func NewWriter(w io.Writer) *Writer { return &Writer{w: w} }
 // Write frames and writes a message.
 func (wr *Writer) Write(msg *Message) error {
 	if msg.JSONRPC == "" {
-		msg.JSONRPC = "2.0"
+		msg.JSONRPC = Version
 	}
 
 	body, err := json.Marshal(msg)

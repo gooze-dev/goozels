@@ -3,10 +3,11 @@
 with-expecter: true
 disable-version-string: true
 packages:
-  gooze.dev/goozels/internal/controller:
+  gooze.dev/pkg/goozels/internal/controller:
     config:
       dir: internal/controller/mocks
       outpkg: mocks
     interfaces:
       GoozeRunner:
       Documents:
+      Reports:

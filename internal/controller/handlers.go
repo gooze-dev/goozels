@@ -3,11 +3,11 @@ package controller
 import (
 	"encoding/json"
 
-	"gooze.dev/pkg/goozels/internal/adapter/jsonrpc"
-	"gooze.dev/pkg/goozels/internal/adapter/lsp"
+	"gooze.dev/pkg/goozels/internal/domain/document"
 	"gooze.dev/pkg/goozels/internal/domain/goozeyml"
 	"gooze.dev/pkg/goozels/internal/domain/ignore"
-	"gooze.dev/pkg/goozels/internal/model"
+	"gooze.dev/pkg/goozels/pkg/jsonrpc"
+	"gooze.dev/pkg/goozels/pkg/lsp"
 )
 
 // handleClient routes a message from the editor.
@@ -48,7 +48,7 @@ func (s *Server) handleClientRequest(msg *jsonrpc.Message) {
 	default:
 		// Other requests on a config document can't be served by gopls (it never
 		// saw the file); answer null. Everything else is forwarded.
-		if lsp.IsConfigURI(uriOf(msg.Params)) {
+		if isConfigURI(uriOf(msg.Params)) {
 			s.respondNull(msg)
 			return
 		}
@@ -62,7 +62,7 @@ func (s *Server) handleClientRequest(msg *jsonrpc.Message) {
 func (s *Server) routePositional(msg *jsonrpc.Message, configFn func(*jsonrpc.Message), goFn func()) {
 	uri := uriOf(msg.Params)
 	switch {
-	case lsp.IsConfigURI(uri):
+	case isConfigURI(uri):
 		configFn(msg)
 	default:
 		goFn()
@@ -80,7 +80,7 @@ func (s *Server) handleClientNotification(msg *jsonrpc.Message) {
 	default:
 		// Swallow notifications about config documents (gopls doesn't track
 		// them); forward everything else.
-		if uri := uriOf(msg.Params); uri != "" && lsp.IsConfigURI(uri) {
+		if uri := uriOf(msg.Params); uri != "" && isConfigURI(uri) {
 			return
 		}
 
@@ -123,7 +123,7 @@ func (s *Server) onDidOpen(msg *jsonrpc.Message) {
 	td := p.TextDocument
 	s.store.Open(td.URI, td.Text, td.Version)
 
-	if lsp.IsConfigURI(td.URI) {
+	if isConfigURI(td.URI) {
 		s.publishConfig(td.URI)
 		return // never forward YAML to gopls
 	}
@@ -140,7 +140,7 @@ func (s *Server) onDidChange(msg *jsonrpc.Message) {
 
 	s.store.Change(p.TextDocument.URI, p.TextDocument.Version, p.ContentChanges)
 
-	if lsp.IsConfigURI(p.TextDocument.URI) {
+	if isConfigURI(p.TextDocument.URI) {
 		s.publishConfig(p.TextDocument.URI)
 		return
 	}
@@ -160,7 +160,7 @@ func (s *Server) onDidClose(msg *jsonrpc.Message) {
 	uri := p.TextDocument.URI
 	s.store.Close(uri)
 
-	if lsp.IsConfigURI(uri) {
+	if isConfigURI(uri) {
 		s.notify("textDocument/publishDiagnostics", lsp.PublishDiagnosticsParams{URI: uri, Diagnostics: []lsp.Diagnostic{}})
 		return
 	}
@@ -182,7 +182,7 @@ func (s *Server) configCompletion(msg *jsonrpc.Message) {
 
 	text, _ := s.store.Text(uri)
 	items := goozeyml.Complete(text, lineNum, col)
-	s.respond(msg, lsp.CompletionResult(lineNum, line, lsp.CompletionKindProperty, items))
+	s.respond(msg, lspCompletion(lineNum, line, lsp.CompletionKindProperty, items))
 }
 
 func (s *Server) configHover(msg *jsonrpc.Message) {
@@ -200,7 +200,7 @@ func (s *Server) configHover(msg *jsonrpc.Message) {
 		return
 	}
 
-	s.respond(msg, lsp.HoverResult(model.Lines(text), h))
+	s.respond(msg, lspHover(document.Lines(text), h))
 }
 
 func (s *Server) augmentGoCompletion(req, resp *jsonrpc.Message) {
@@ -218,7 +218,7 @@ func (s *Server) augmentGoCompletion(req, resp *jsonrpc.Message) {
 		return
 	}
 
-	ours := lsp.CompletionResult(lineNum, line, lsp.CompletionKindEnumMember, items)
+	ours := lspCompletion(lineNum, line, lsp.CompletionKindEnumMember, items)
 	resp.Result = mergeCompletionResult(resp.Result, ours.Items)
 	s.sendClient(resp)
 }
@@ -237,7 +237,7 @@ func (s *Server) augmentGoHover(req, resp *jsonrpc.Message) {
 	}
 
 	text, _ := s.store.Text(uriOf(req.Params))
-	if raw, err := json.Marshal(lsp.HoverResult(model.Lines(text), h)); err == nil {
+	if raw, err := json.Marshal(lspHover(document.Lines(text), h)); err == nil {
 		resp.Result = raw
 	}
 
@@ -271,8 +271,8 @@ func (s *Server) publishMergedGo(uri string, version *int) {
 
 	merged := append([]lsp.Diagnostic{}, goplsDiags...)
 	if text, ok := s.store.Text(uri); ok {
-		merged = append(merged, lsp.Diagnostics(text, ignore.Diagnose(text))...)
-		merged = append(merged, lsp.Diagnostics(text, s.reportDiagnostics(uri))...)
+		merged = append(merged, lspDiagnostics(text, ignore.Diagnose(text))...)
+		merged = append(merged, lspDiagnostics(text, s.reportDiagnostics(uri))...)
 	}
 
 	s.notify("textDocument/publishDiagnostics", lsp.PublishDiagnosticsParams{
@@ -288,7 +288,7 @@ func (s *Server) publishConfig(uri string) {
 		return
 	}
 
-	diags := lsp.Diagnostics(text, goozeyml.Diagnose(text))
+	diags := lspDiagnostics(text, goozeyml.Diagnose(text))
 	s.notify("textDocument/publishDiagnostics", lsp.PublishDiagnosticsParams{URI: uri, Diagnostics: diags})
 }
 
@@ -307,14 +307,14 @@ func (s *Server) posContext(msg *jsonrpc.Message) (uri string, lineNum int, line
 		return "", 0, "", 0, false
 	}
 
-	lines := model.Lines(text)
+	lines := document.Lines(text)
 	if p.Position.Line < 0 || p.Position.Line >= len(lines) {
 		return "", 0, "", 0, false
 	}
 
 	line = lines[p.Position.Line]
 
-	return p.TextDocument.URI, p.Position.Line, line, lsp.ByteColumn(line, p.Position.Character), true
+	return p.TextDocument.URI, p.Position.Line, line, lsp.UTF16ToByte(line, p.Position.Character), true
 }
 
 // uriOf extracts textDocument.uri from raw params, or "" when absent.

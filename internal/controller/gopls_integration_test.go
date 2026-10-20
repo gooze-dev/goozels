@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"gooze.dev/pkg/goozels/internal/adapter/gopls"
-	"gooze.dev/pkg/goozels/internal/adapter/jsonrpc"
+	"gooze.dev/pkg/goozels/pkg/jsonrpc"
 )
 
 // TestRealGoplsInitialize boots the real gopls binary behind the proxy and
@@ -30,7 +30,7 @@ func TestRealGoplsInitialize(t *testing.T) {
 	c2sR, c2sW := io.Pipe() // client -> server
 	s2cR, s2cW := io.Pipe() // server -> client
 
-	srv := NewServer(s2cW, proc.Stdin, "gooze")
+	srv := NewServer(s2cW, proc.Stdin, productionDeps("gooze"))
 	go func() { _ = srv.Run(c2sR, proc.Stdout) }()
 
 	clientW := jsonrpc.NewWriter(c2sW)
