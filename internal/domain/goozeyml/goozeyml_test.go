@@ -227,3 +227,24 @@ func TestParseEntryColonRules(t *testing.T) {
 		}
 	}
 }
+
+func TestDiagnoseIntegerBounds(t *testing.T) {
+	cases := []struct {
+		yaml, want string
+		line       int
+	}{
+		{"version: 2\n", `invalid value for "version": 2 is out of range: must be 1`, 0},
+		{"run:\n  parallel: 0\n", `invalid value for "run.parallel": 0 is out of range: must be at least 1`, 1},
+		{"run:\n  mutation_timeout: 0\n", `invalid value for "run.mutation_timeout": 0 is out of range: must be at least 1`, 1},
+	}
+	for _, c := range cases {
+		diags := newEditor().Diagnose(c.yaml)
+		if len(diags) != 1 || diags[0].Message != c.want || diags[0].Range.Start.Line != c.line || diags[0].Severity != model.SeverityError {
+			t.Errorf("Diagnose(%q) = %+v, want one error %q on line %d", c.yaml, diags, c.want, c.line)
+		}
+	}
+
+	if diags := newEditor().Diagnose("version: 1\nrun:\n  parallel: 8\n  mutation_timeout: 120\n"); len(diags) != 0 {
+		t.Errorf("in-range values should be accepted, got %+v", diags)
+	}
+}

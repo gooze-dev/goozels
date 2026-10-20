@@ -48,7 +48,7 @@ keep **all** your normal Go features and simply get gooze ones on top.
   allowed values.
 - Hover a key to see its type, meaning, and default.
 - Live validation: unknown keys (with a *did you mean "run.parallel"?*
-  suggestion), bad values (e.g. `log.level: loud`) and invalid YAML (an unclosed
+  suggestion), bad values (e.g. `log.level: loud`, or `run.parallel: 0`, which gooze rejects) and invalid YAML (an unclosed
   `[`) are flagged as you type.
 
 The mutagens you can reference in `//gooze:ignore` are: `arithmetic`, `boolean`,

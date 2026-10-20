@@ -444,9 +444,7 @@ func validateScalar(f config.Field, raw string) string {
 			return "expected a boolean (true or false)"
 		}
 	case config.KindInt:
-		if _, err := strconv.Atoi(raw); err != nil {
-			return "expected an integer"
-		}
+		return validateInt(f, raw)
 	case config.KindEnum:
 		return validateEnum(f, raw)
 	case config.KindObject:
@@ -456,6 +454,21 @@ func validateScalar(f config.Field, raw string) string {
 			return "is a section; put its settings on indented lines below it"
 		}
 	case config.KindString, config.KindStringList:
+	}
+
+	return ""
+}
+
+// validateInt checks raw is an integer within the schema's bounds (e.g.
+// run.parallel >= 1), the same bounds gooze run enforces.
+func validateInt(f config.Field, raw string) string {
+	n, err := strconv.Atoi(raw)
+	if err != nil {
+		return "expected an integer"
+	}
+
+	if err := f.CheckInt(n); err != nil {
+		return err.Error()
 	}
 
 	return ""
