@@ -235,3 +235,19 @@ func TestLineMessageCountsTheRest(t *testing.T) {
 		}
 	}
 }
+
+func TestMutantName(t *testing.T) {
+	if got := mutantName(""); got != "mutant" {
+		t.Errorf("mutantName(\"\") = %q", got)
+	}
+	if got := mutantName("logical"); got != "logical mutant" {
+		t.Errorf("mutantName(logical) = %q", got)
+	}
+}
+
+func TestVariantFirstByteDiffers(t *testing.T) {
+	orig, mutated := "a := alpha.beta.gamma + 1000", "b := alpha.beta.gamma + 1000"
+	if got := variant(orig, mutated, true); got != "`"+mutated+"`" {
+		t.Errorf("variant = %q, want the whole line when the first byte changed", got)
+	}
+}

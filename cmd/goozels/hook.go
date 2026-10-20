@@ -67,13 +67,12 @@ func runHook(args []string, stdin io.Reader, stdout, stderr io.Writer, state hoo
 	}
 
 	workdir := in.Cwd
-	// Equivalent: no string sorts below "", so < "" never holds and <= "" is == "".
-	if workdir == "" { //gooze:ignore comparison
+	if workdir == "" {
 		workdir = envOr("CLAUDE_PROJECT_DIR", ".")
 	}
 
 	files := []string{in.ToolInput.FilePath}
-	// Equivalent: args[0] is "claude" or "codex" here, and "claude" sorts below "codex".
+	// Equivalent: args[0] is "claude" or "codex" here, and "claude" sorts below "codex", so >= is ==.
 	if args[0] == "codex" { //gooze:ignore comparison
 		files = patchedFiles(commandText(in.ToolInput.Command))
 	}
@@ -87,8 +86,7 @@ func runHook(args []string, stdin io.Reader, stdout, stderr io.Writer, state hoo
 	out := render(entries, renderOptions{maxLines: maxHookLines, maxBytes: maxHookBytes, hint: true})
 
 	lines := slices.Concat(out.notes, out.lines)
-	// Equivalent: a length is never negative, so <= 0 is == 0.
-	if len(lines) == 0 { //gooze:ignore comparison
+	if len(lines) == 0 {
 		return 0
 	}
 
@@ -111,8 +109,7 @@ func runHook(args []string, stdin io.Reader, stdout, stderr io.Writer, state hoo
 // is also where paths are shown from and the fallback workspace root.
 func hookEntries(workdir string, files []string) []entry {
 	base, err := filepath.Abs(workdir)
-	// Equivalent: filepath.Abs fails only when the working directory is gone, which tests cannot arrange portably.
-	if err != nil { //gooze:ignore comparison
+	if err != nil {
 		base = workdir
 	}
 
@@ -121,7 +118,7 @@ func hookEntries(workdir string, files []string) []entry {
 	var entries []entry
 
 	for _, f := range files {
-		// Equivalent: no string sorts below "", so < "" never holds and <= "" is == "".
+		// Equivalent: an empty name resolves to the workspace directory itself, which cannot be read as a file to check.
 		if f == "" { //gooze:ignore comparison
 			continue
 		}
@@ -147,7 +144,7 @@ func markSeen(entries []entry, seen map[string]string) {
 		e := &entries[i]
 
 		d := digest(e)
-		// Equivalent: no string sorts below "", so < "" never holds and <= "" is == "".
+		// Equivalent: an entry without a digest has neither results nor a note, so marking it brief prints the same lines.
 		if d == "" { //gooze:ignore comparison
 			continue
 		}
@@ -172,7 +169,7 @@ func digest(e *entry) string {
 		b.WriteString("\n" + formatDiagnostic(e.shown, d))
 	}
 
-	// Equivalent: a length is never negative, so <= 0 is == 0 (== 1 is killed by a test).
+	// Equivalent: Builder.Len is never negative, so <= 0 is == 0.
 	if b.Len() == 0 { //gooze:ignore comparison
 		return ""
 	}

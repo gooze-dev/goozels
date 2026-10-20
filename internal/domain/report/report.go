@@ -36,8 +36,7 @@ type Current struct {
 // line.
 func Diagnostics(reports []rpt.Report, workdir, absPath string, cur Current) []model.Diagnostic {
 	rep := ForFile(reports, workdir, absPath)
-	// Equivalent: a length is never negative, so <= 0 is == 0.
-	if len(rep) == 0 { //gooze:ignore comparison
+	if len(rep) == 0 {
 		return nil
 	}
 
@@ -77,8 +76,7 @@ func headDiagnostic(rep []rpt.Report, workdir, absPath string, cur Current) mode
 // how to refresh them.
 func staleMessage(why string, rep []rpt.Report, rerun string) string {
 	msg := "gooze: " + why + "; score then " + percent(Summarize(rep))
-	// Equivalent: no string sorts below "", so > "" is != "".
-	if rerun != "" { //gooze:ignore comparison
+	if rerun != "" {
 		msg += "; rerun: " + rerun
 	}
 
@@ -157,15 +155,13 @@ func names(f *rpt.File, workdir, absPath string) bool {
 		return false
 	}
 
-	// Equivalent: no string sorts below "", so > "" is != "" (the other comparisons are killed by tests).
-	return f.FullPath == absPath || (f.ShortPath != "" && filepath.Join(workdir, f.ShortPath) == absPath) //gooze:ignore comparison
+	return f.FullPath == absPath || (f.ShortPath != "" && filepath.Join(workdir, f.ShortPath) == absPath)
 }
 
 // resolve returns the local path of a report file: its ShortPath under
 // workdir when recorded, otherwise its FullPath.
 func resolve(f *rpt.File, workdir string) string {
-	// Equivalent: no string sorts below "", so > "" is != "" (>= "" is killed by a test).
-	if f.ShortPath != "" { //gooze:ignore comparison
+	if f.ShortPath != "" {
 		return filepath.Join(workdir, f.ShortPath)
 	}
 
@@ -223,8 +219,7 @@ func SummaryDiagnostic(reports []rpt.Report) model.Diagnostic {
 	s := Summarize(reports)
 	severity := model.SeverityInfo
 
-	// Equivalent: counts are never negative, so != 0 is > 0.
-	if s.Survived+s.NotCovered > 0 { //gooze:ignore comparison
+	if s.Survived+s.NotCovered > 0 {
 		severity = model.SeverityWarning
 	}
 

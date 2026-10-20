@@ -184,8 +184,7 @@ func mutagenTally(ms []mutant) string {
 }
 
 func mutantName(mutagen string) string {
-	// Equivalent: no string sorts below "", so < "" never holds and <= "" is == "".
-	if mutagen == "" { //gooze:ignore comparison
+	if mutagen == "" {
 		return "mutant"
 	}
 
@@ -203,8 +202,7 @@ const (
 // long line shares with orig is shortened to "…" at a space, so the variants
 // of one line differ visibly: "… < 0 {".
 func variant(orig, mutated string, elide bool) string {
-	// Equivalent: no string sorts below "", so <= "" is == "".
-	if mutated == "" { //gooze:ignore comparison
+	if mutated == "" {
 		return "(line removed)"
 	}
 
@@ -220,15 +218,14 @@ func variant(orig, mutated string, elide bool) string {
 // elisionCut returns where a variant's display may start: after the last
 // space before it departs from orig.
 func elisionCut(orig, mutated string) int {
-	// Equivalent: starting at 1 only skips comparing the first bytes, which (lines being trimmed) cannot be a space to cut at.
-	shared := 0 //gooze:ignore numbers
-	// Equivalent: shared counts up from 0, so != min is < min (<= is killed by a test).
+	shared := 0
+	// Equivalent: shared counts up from 0, so != min is < min.
 	for shared < min(len(orig), len(mutated)) && orig[shared] == mutated[shared] { //gooze:ignore comparison
 		shared++
 	}
 
 	cut := strings.LastIndexByte(orig[:shared], ' ') + 1
-	// Equivalent: lines are trimmed, so a cut after a space is never 1 nor at the end of mutated.
+	// Equivalent: cut is never negative, and lines are trimmed, so a cut after a space is never 1 nor at the end of mutated.
 	if cut > 0 && cut < len(mutated) && isWordByte(mutated[cut]) { //gooze:ignore comparison,numbers
 		// A literal or name changed: keep the token before it as context
 		// ("… > 1 {", not "… 1 {"). Operators read on their own.
@@ -290,7 +287,7 @@ func diffLines(diff string) []change {
 			changes = append(changes, removedLine(old-1, l[1:]))
 			old++
 		case strings.HasPrefix(l, "+"):
-			// Equivalent: pending never exceeds len(changes), so != is < (<= is killed by a test).
+			// Equivalent: pending never exceeds len(changes), so != is <.
 			if pending < len(changes) { //gooze:ignore comparison
 				changes[pending].mutated = strings.TrimSpace(l[1:])
 				pending++

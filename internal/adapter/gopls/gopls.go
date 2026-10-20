@@ -19,8 +19,7 @@ type Process struct {
 // Start launches gopls at the given path (default "gopls" when empty) with the
 // given extra args, wiring its stderr to the parent's for diagnostics.
 func Start(path string, args ...string) (*Process, error) {
-	// Equivalent: no string sorts below "", so <= "" is == "" (< "" is killed by a test).
-	if path == "" { //gooze:ignore comparison
+	if path == "" {
 		path = "gopls"
 	}
 
@@ -60,8 +59,7 @@ func (p *Process) Kill() error {
 // Run runs a one-shot gopls command (such as `version -json`) at path with
 // its output going to stdout and stderr, and waits for it to finish.
 func Run(ctx context.Context, path string, stdout, stderr io.Writer, args ...string) error {
-	// Equivalent: no string sorts below "", so <= "" is == "" (< "" is killed by a test).
-	if path == "" { //gooze:ignore comparison
+	if path == "" {
 		path = "gopls"
 	}
 

@@ -135,3 +135,40 @@ func TestPruneAges(t *testing.T) {
 		}
 	}
 }
+
+func TestDisabledStoreWritesNothing(t *testing.T) {
+	cwd := t.TempDir()
+	t.Chdir(cwd)
+	New("").Save("abc", map[string]string{"k": "v"})
+	if entries, _ := os.ReadDir(cwd); len(entries) != 0 {
+		t.Errorf("a store without a directory wrote %v", entries)
+	}
+}
+
+func TestSaveWithoutSessionDoesNotPrune(t *testing.T) {
+	dir := t.TempDir()
+	old := filepath.Join(dir, "old.json")
+	if err := os.WriteFile(old, []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stale := time.Now().Add(-2 * maxAge)
+	if err := os.Chtimes(old, stale, stale); err != nil {
+		t.Fatal(err)
+	}
+	New(dir).Save("", map[string]string{})
+	if fileMissing(old) {
+		t.Error("a Save without a session should leave the directory alone")
+	}
+}
+
+func TestDisabledStoreReadsNothing(t *testing.T) {
+	cwd := t.TempDir()
+	t.Chdir(cwd)
+	p, _ := New("d").path("abc")
+	if err := os.WriteFile(filepath.Base(p), []byte(`{"k":"v"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := New("").Load("abc"); len(got) != 0 {
+		t.Errorf("a store without a directory read %v", got)
+	}
+}

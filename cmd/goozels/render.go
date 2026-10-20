@@ -42,8 +42,7 @@ func render(entries []entry, opts renderOptions) output {
 	)
 
 	for _, e := range entries {
-		// Equivalent: no string sorts below "", so > "" is != "".
-		if e.note != "" { //gooze:ignore comparison
+		if e.note != "" {
 			out.notes = append(out.notes, e.note)
 		}
 
@@ -55,13 +54,11 @@ func render(entries []entry, opts renderOptions) output {
 		}
 	}
 
-	// Equivalent: a length is never negative, so != 0 is > 0.
-	if len(c.hidden) > 0 { //gooze:ignore comparison
+	if len(c.hidden) > 0 {
 		out.lines = append(out.lines, capLine(c.hidden, c.counts))
 	}
 
-	// Equivalent: a length is never negative, so != 0 is > 0.
-	if c.survived && (opts.hint || len(c.hidden) > 0) { //gooze:ignore comparison
+	if c.survived && (opts.hint || len(c.hidden) > 0) {
 		out.lines = append(out.lines, controller.IgnoreHint)
 	}
 
@@ -100,8 +97,7 @@ func (c *capper) add(file string, l line) bool {
 }
 
 func exceeds(opts renderOptions, lines, bytes int) bool {
-	// Equivalent: limits are never negative, so != 0 is > 0 (the line and byte comparisons are killed by tests).
-	return (opts.maxLines > 0 && lines > opts.maxLines) || (opts.maxBytes > 0 && bytes > opts.maxBytes) //gooze:ignore comparison
+	return (opts.maxLines > 0 && lines > opts.maxLines) || (opts.maxBytes > 0 && bytes > opts.maxBytes)
 }
 
 // capLine says how many diagnostics were left out and how to see them all:
@@ -126,10 +122,9 @@ func entryLines(e entry) []line {
 	// Equivalent: only the slice's initial capacity changes.
 	lines := make([]line, 0, len(diags)+1) //gooze:ignore arithmetic,numbers
 
-	// Equivalent: a length is never negative, so != 0 is > 0 (> 1 is killed by a test).
-	if e.brief && len(e.check.Results) > 0 { //gooze:ignore comparison
+	if e.brief && len(e.check.Results) > 0 {
 		summary := formatDiagnostic(e.shown, e.check.Results[0])
-		// Equivalent: Results holds at least the summary here, so != 1 is > 1 (>= 1 is killed by a test).
+		// Equivalent: the enclosing condition has len > 0, so != 1 is > 1.
 		if len(e.check.Results) > 1 { //gooze:ignore comparison
 			summary += briefSuffix
 		}

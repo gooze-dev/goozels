@@ -31,20 +31,17 @@ import (
 )
 
 func main() {
-	// The process entry point is not unit-tested; run covers everything it calls.
-	os.Exit(run(os.Args[1:])) //gooze:ignore numbers
+	os.Exit(run(os.Args[1:]))
 }
 
 // run dispatches to a subcommand, or serves the language server.
 func run(args []string) int {
-	// Equivalent for tests: with no arguments goozels serves on the process's stdin, which unit tests do not run (!= 0 is > 0 anyway).
-	if len(args) > 0 { //gooze:ignore comparison
+	if len(args) > 0 {
 		switch args[0] {
 		case "check":
 			return runCheck(args[1:], os.Stdout, os.Stderr)
 		case "hook":
-			// Equivalent for tests: a working hook call reads the process's stdin; with an extra "hook" argument both forms fail with usage status 2.
-			return runHook(args[1:], os.Stdin, os.Stdout, os.Stderr, hookstate.Default()) //gooze:ignore numbers
+			return runHook(args[1:], os.Stdin, os.Stdout, os.Stderr, hookstate.Default())
 		case "version":
 			return runVersion(args[1:], os.Stdout, os.Stderr, goplsVersion)
 		case "help", "-h", "-help", "--help":
@@ -83,7 +80,7 @@ func parseServe(args []string, stderr io.Writer) (serveFlags, error) {
 		return f, err
 	}
 
-	// Equivalent: with at least one argument, len > 1 and len != 1 agree, and != 0 is > 0 (the "serve" comparisons are killed by a test).
+	// Equivalent: len(rest) > 0 has already held, so len(rest) > 1 and len(rest) != 1 agree.
 	if rest := fs.Args(); len(rest) > 0 && (len(rest) > 1 || rest[0] != "serve") { //gooze:ignore comparison
 		return f, fmt.Errorf("unknown command or argument %q; see goozels help (gopls arguments go after --)", rest[0])
 	}
@@ -129,8 +126,7 @@ func serve(args []string) int {
 	_ = proc.Kill()
 	_ = proc.Wait()
 
-	// Not unit-tested: reached only after a real editor session ends.
-	return 0 //gooze:ignore numbers
+	return 0
 }
 
 // isTerminal reports whether f is an interactive terminal rather than the
@@ -138,7 +134,7 @@ func serve(args []string) int {
 func isTerminal(f *os.File) bool {
 	info, err := f.Stat()
 
-	// Equivalent: the mode bits are unsigned, so > 0 is != 0 (< 0 never holds).
+	// Equivalent: file mode bits are unsigned, so > 0 is != 0.
 	return err == nil && info.Mode()&os.ModeCharDevice != 0 //gooze:ignore comparison
 }
 
@@ -149,8 +145,7 @@ func goplsVersion(stdout, stderr io.Writer, args ...string) error {
 }
 
 func envOr(key, fallback string) string {
-	// Equivalent: no string sorts below "", so > "" is != "".
-	if v := os.Getenv(key); v != "" { //gooze:ignore comparison
+	if v := os.Getenv(key); v != "" {
 		return v
 	}
 

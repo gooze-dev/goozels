@@ -31,8 +31,7 @@ const defaultPattern = "./..."
 // package pattern for the commands that take one; empty means "./...". The
 // second result is false for unknown identifiers.
 func Args(id, pathArg string) ([]string, bool) {
-	// Equivalent: no string sorts below "", so <= "" is == "".
-	if pathArg == "" { //gooze:ignore comparison
+	if pathArg == "" {
 		pathArg = defaultPattern
 	}
 

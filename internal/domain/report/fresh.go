@@ -55,7 +55,7 @@ func freshness(reports []rpt.Report, workdir, absPath string, cur Current) (Fres
 			return SourceChanged, ""
 		}
 
-		// Equivalent: state is Fresh or TestChanged here, so > Fresh is != Fresh (< Fresh is killed by a test).
+		// Equivalent: Fresh is the lowest Freshness, so > Fresh is != Fresh.
 		if cur.Tests == nil || state != Fresh { //gooze:ignore comparison
 			continue
 		}
@@ -73,8 +73,7 @@ func freshness(reports []rpt.Report, workdir, absPath string, cur Current) (Fres
 func sourceFresh(r rpt.Report, hash string) bool {
 	o := r.Source.Origin
 
-	// Equivalent: no string sorts below "", so <= "" is == "" (<= hash is killed by a test).
-	return o == nil || o.Hash == "" || o.Hash == hash //gooze:ignore comparison
+	return o == nil || o.Hash == "" || o.Hash == hash
 }
 
 // testChanged reports whether the test file r recorded differs from (or no
@@ -88,8 +87,7 @@ func testChanged(r rpt.Report, workdir, absPath string, tests map[string]string)
 		return f, added
 	}
 
-	// Equivalent: no string sorts below "", so <= "" is == "".
-	if r.Source.Test.Hash == "" { //gooze:ignore comparison
+	if r.Source.Test.Hash == "" {
 		return "", false
 	}
 

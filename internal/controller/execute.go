@@ -144,8 +144,7 @@ func firstStringArg(rawArgs []json.RawMessage) string {
 // diagnostics so a fresh report shows up. The output is logged, capped at
 // maxLogBytes.
 func (s *Server) reportGoozeResult(label, scope, out string, err error) {
-	// Equivalent: no string sorts below "", so > "" is != "" (>= "" is killed by a test).
-	if out != "" { //gooze:ignore comparison
+	if out != "" {
 		s.notify("window/logMessage", lsp.ShowMessageParams{Type: lsp.MessageLog, Message: capLog(label, out)})
 	}
 
@@ -159,8 +158,7 @@ func (s *Server) reportGoozeResult(label, scope, out string, err error) {
 	}
 
 	msg := label + " finished"
-	// Equivalent: no string sorts below "", so > "" is != "".
-	if score := s.score(scope); score != "" { //gooze:ignore comparison
+	if score := s.score(scope); score != "" {
 		msg += " — " + score
 	}
 
@@ -171,8 +169,7 @@ func (s *Server) reportGoozeResult(label, scope, out string, err error) {
 // score summarizes the reports of the packages a pattern selects, or returns
 // "" when there are none.
 func (s *Server) score(pattern string) string {
-	// Equivalent: no string sorts below "", so < "" never holds and <= "" is == "".
-	if pattern == "" { //gooze:ignore comparison
+	if pattern == "" {
 		return ""
 	}
 
@@ -184,8 +181,7 @@ func (s *Server) score(pattern string) string {
 	}
 
 	matched := report.Matching(all, workdir, pattern)
-	// Equivalent: a length is never negative, so <= 0 is == 0 (< 0 and == 1 are killed by a test).
-	if len(matched) == 0 { //gooze:ignore comparison
+	if len(matched) == 0 {
 		return ""
 	}
 
@@ -200,7 +196,7 @@ func capLog(label, out string) string {
 	}
 
 	cut := strings.LastIndexByte(out[:maxLogBytes], '\n') + 1
-	// Equivalent: cut is never negative, so <= 0 is == 0 (>= 0 is killed by a test).
+	// Equivalent: cut is LastIndexByte + 1, never negative, so <= 0 is == 0.
 	if cut == 0 { //gooze:ignore comparison
 		cut = maxLogBytes
 	}

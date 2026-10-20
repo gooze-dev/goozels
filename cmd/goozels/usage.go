@@ -51,12 +51,11 @@ const terminalHint = "goozels: running as a language server: it reads LSP messag
 // start as gopls.
 func runVersion(args []string, stdout, stderr io.Writer, gopls func(stdout, stderr io.Writer, args ...string) error) int {
 	switch {
-	// Equivalent: a length is never negative, so <= 0 is == 0.
-	case len(args) == 0: //gooze:ignore comparison
+	case len(args) == 0:
 		_, _ = fmt.Fprintln(stdout, "goozels "+version())
 
 		return 0
-	// Equivalent: the case above took len 0, so <= 1 is == 1 (the other comparisons are killed by a test).
+	// Equivalent: the case above took len 0, so <= 1 is == 1.
 	case len(args) == 1 && args[0] == "-json": //gooze:ignore comparison
 		if err := gopls(stdout, stderr, args...); err != nil {
 			_, _ = fmt.Fprintf(stderr, "goozels: gopls version: %v\n", err)
@@ -75,8 +74,7 @@ func runVersion(args []string, stdout, stderr io.Writer, gopls func(stdout, stde
 // version is the goozels module version from the build info: a release tag
 // for `go install ...@vX.Y.Z` builds, "(devel)" for local builds.
 func version() string {
-	// Only installed builds carry a module version; test binaries always take the "(devel)" fallback, which a test pins.
-	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" { //gooze:ignore comparison,logical
+	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" {
 		return info.Main.Version
 	}
 

@@ -78,8 +78,7 @@ func (c Checker) Check(workdir, absPath, text string) FileCheck {
 
 		if all, err := c.Reports.ReadDir(filepath.Join(workdir, config.DefaultReportsDir)); err == nil {
 			fc.Results = c.results(all, workdir, absPath, text, fc.Rerun)
-			// Equivalent: a length is never negative, so != 0 is > 0.
-			fc.PackageTested = len(report.Matching(all, workdir, pattern)) > 0 //gooze:ignore comparison
+			fc.PackageTested = len(report.Matching(all, workdir, pattern)) > 0
 		}
 
 		return fc
@@ -131,8 +130,7 @@ func (c Checker) results(all []goozereport.Report, workdir, absPath, text, rerun
 // rerun is the command that reruns gooze for a pattern from c.Cwd.
 func (c Checker) rerun(workdir, pattern string) string {
 	line := command.RunCommandLine(pattern)
-	// Equivalent: no string sorts below "", so <= "" is == "" (the workdir comparisons are killed by a test).
-	if c.Cwd == "" || c.Cwd == workdir { //gooze:ignore comparison
+	if c.Cwd == "" || c.Cwd == workdir {
 		return line
 	}
 

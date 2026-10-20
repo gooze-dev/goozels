@@ -287,3 +287,13 @@ func TestRunHookRejectsExtraArgs(t *testing.T) {
 		t.Errorf("exit = %d, want 2", code)
 	}
 }
+
+func TestRunHookWithoutCwdUsesProjectDir(t *testing.T) {
+	dir := workspace(t)
+	t.Setenv("CLAUDE_PROJECT_DIR", dir)
+	t.Chdir(t.TempDir())
+	ctx := hookContext(t, "claude", hookPayload(t, "", "", "gooze.yaml"), noState())
+	if !strings.Contains(ctx, "gooze.yaml:1:1: error") {
+		t.Errorf("a relative file without cwd should resolve against CLAUDE_PROJECT_DIR, got %q", ctx)
+	}
+}

@@ -63,7 +63,7 @@ func TestRenderByteBoundary(t *testing.T) {
 		diag(0, model.SeverityWarning, "a"), diag(1, model.SeverityWarning, "b"),
 	}}}
 	n := len(formatDiagnostic("f", ten.check.Edit[0])) + 1 // a line and its newline
-	if out := render([]entry{ten}, renderOptions{maxBytes: 2 * n}); len(out.lines) != 2 {
+	if out := render([]entry{ten}, renderOptions{maxBytes: 2 * n}); len(out.lines) != 2 || strings.HasPrefix(out.lines[1], "…") {
 		t.Errorf("two lines of %d bytes fit in %d: got %q", n, 2*n, out.lines)
 	}
 	if out := render([]entry{ten}, renderOptions{maxBytes: 2*n - 1}); len(out.lines) != 2 || !strings.HasPrefix(out.lines[1], "… 1 more") {
@@ -88,5 +88,11 @@ func TestRenderSummaryOnly(t *testing.T) {
 func TestRenderOneByteLimit(t *testing.T) {
 	if out := render([]entry{sampleEntry("a.go")}, renderOptions{maxBytes: 1}); len(out.lines) == 0 || !strings.HasPrefix(out.lines[0], "… 3 more") {
 		t.Errorf("no line fits in one byte: got %q", out.lines)
+	}
+}
+
+func TestRenderNegativeLimitsMeanNoLimit(t *testing.T) {
+	if out := render([]entry{sampleEntry("a.go")}, renderOptions{maxLines: -1, maxBytes: -1}); len(out.lines) != 3 {
+		t.Errorf("negative limits should not cap: got %q", out.lines)
 	}
 }

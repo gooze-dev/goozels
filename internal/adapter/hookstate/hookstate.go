@@ -80,10 +80,8 @@ func (s Store) Save(session string, seen map[string]string) {
 // path names the state file of a session, hashing the id so any string makes
 // a safe file name.
 func (s Store) path(session string) (string, bool) {
-	// Equivalent: no string sorts below "", so < "" never holds and <= "" is == "".
-	if s.dir == "" || session == "" { //gooze:ignore comparison
-		// Equivalent: with no directory or session the path is "", which can be neither read nor written.
-		return "", false //gooze:ignore boolean
+	if s.dir == "" || session == "" {
+		return "", false
 	}
 
 	sum := sha256.Sum256([]byte(session))
@@ -110,8 +108,7 @@ func (s Store) prune() {
 
 		// Another hook may prune the same file; any other failure means the
 		// directory is not writable, so stop trying.
-		// Equivalent: dropping the ! only changes which failed removal stops pruning, which nothing observes (the other mutants are killed by a test).
-		if err := os.Remove(filepath.Join(s.dir, e.Name())); err != nil && !errors.Is(err, fs.ErrNotExist) { //gooze:ignore unary
+		if err := os.Remove(filepath.Join(s.dir, e.Name())); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return
 		}
 	}

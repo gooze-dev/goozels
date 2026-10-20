@@ -435,3 +435,32 @@ func TestCapLogBoundaries(t *testing.T) {
 		t.Errorf("output should be cut at a line end: kept %d bytes, then %q", len(kept), rest[:min(len(rest), 20)])
 	}
 }
+
+func TestEstimateFinishesWithoutScore(t *testing.T) {
+	dir := projectCopy(t)
+	var client bytes.Buffer
+	deps := productionDeps("gooze")
+	deps.Gooze = recordingGooze{}
+	s := NewServer(&client, io.Discard, deps)
+	s.setWorkdir(dir)
+
+	s.runGoozeCommand(&jsonrpc.Message{ID: json.RawMessage("1")}, lsp.ExecuteCommandParams{Command: "gooze.estimate"})
+
+	shown := notifications(t, client.Bytes())["window/showMessage"]
+	if len(shown) != 2 || shown[1] != "gooze run --estimate ./... finished" {
+		t.Errorf("showMessage = %q, want no score after an estimate", shown)
+	}
+}
+
+func TestScoreWithoutScopeIgnoresRootReports(t *testing.T) {
+	deps := productionDeps("gooze")
+	deps.Reports = fakeReports{reports: []report.Report{{
+		Source: report.Source{Origin: &report.File{ShortPath: "x.go"}},
+		Result: []report.Result{{Name: "arithmetic", Mutations: []report.MutationResult{{Status: report.Killed}}}},
+	}}}
+	s := NewServer(io.Discard, io.Discard, deps)
+	s.setWorkdir("/w")
+	if got := s.score(""); got != "" {
+		t.Errorf("score(\"\") = %q, want empty even with reports in the root package", got)
+	}
+}

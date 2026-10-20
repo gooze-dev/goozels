@@ -43,7 +43,7 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 		" directory (default: the nearest directory above each file that has one, else its go.mod directory)")
 	maxLines := fs.Int("max", 0, "print at most N diagnostics, then a line naming the files with more (0: no limit)")
 
-	// Equivalent: NArg is never negative, so <= 0 is == 0.
+	// Equivalent: NArg counts arguments and is never negative, so <= 0 is == 0.
 	if err := fs.Parse(args); err != nil || fs.NArg() == 0 || *maxLines < 0 { //gooze:ignore comparison
 		_, _ = fmt.Fprintln(stderr, checkUsage)
 
@@ -72,8 +72,7 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintln(stderr, "goozels: "+n)
 	}
 
-	// Equivalent: a length is never negative, so != 0 is > 0 (>= 0 is killed by a test).
-	if len(out.lines) > 0 { //gooze:ignore comparison
+	if len(out.lines) > 0 {
 		if _, err := fmt.Fprintln(stdout, strings.Join(out.lines, "\n")); err != nil {
 			return 1
 		}
@@ -111,8 +110,7 @@ func checkFile(checker controller.Checker, workdir, base, file string) ([]entry,
 	}
 
 	root := workdir
-	// Equivalent: no string sorts below "", so <= "" is == "" (>= "" is killed by a test).
-	if root == "" { //gooze:ignore comparison
+	if root == "" {
 		root = findWorkdir(filepath.Dir(abs), base)
 	}
 
@@ -153,8 +151,7 @@ func testedSources(checker controller.Checker, root, base, abs string) []entry {
 	var entries []entry
 
 	for _, src := range checker.SourcesForTest(root, abs) {
-		// Equivalent: a report never names a test file as its source, so the test (src == abs) only guards bad reports.
-		if src == abs || strings.HasSuffix(src, "_test.go") { //gooze:ignore comparison,logical
+		if src == abs || strings.HasSuffix(src, "_test.go") {
 			continue
 		}
 
@@ -203,19 +200,17 @@ func findWorkdir(dir, fallback string) string {
 			return d
 		}
 
-		// Equivalent: no string sorts below "", so <= "" is == "" (>= "" is killed by a test).
-		if module == "" && exists(filepath.Join(d, "go.mod")) { //gooze:ignore comparison
+		if module == "" && exists(filepath.Join(d, "go.mod")) {
 			module = d
 		}
 
-		// Equivalent: a parent directory's path sorts below its child's, so >= is == here.
+		// Equivalent: a parent's path is a prefix of its child's and sorts below it, so >= holds only at the root, like ==.
 		if filepath.Dir(d) == d { //gooze:ignore comparison
 			break
 		}
 	}
 
-	// Equivalent: no string sorts below "", so > "" is != "".
-	if module != "" { //gooze:ignore comparison
+	if module != "" {
 		return module
 	}
 
@@ -236,7 +231,7 @@ func exists(path string) bool {
 
 // shownPath is abs relative to base when it lies inside base, else abs.
 func shownPath(base, abs string) string {
-	// Equivalent: no string sorts below "", so < "" never holds and <= "" is == "".
+	// Equivalent: an empty base that gets past this reaches filepath.Rel, which rejects it for an absolute path, so abs is returned either way.
 	if base == "" { //gooze:ignore comparison
 		return abs
 	}

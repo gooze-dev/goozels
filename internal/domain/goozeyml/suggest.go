@@ -22,20 +22,20 @@ func (ed Editor) suggest(key string) string {
 		return match
 	}
 
-	// Equivalent: ties is set to 1 by the first candidate within reach, and without one best stays "".
+	// Equivalent: the first candidate within reach sets ties to 1, and without one best stays "".
 	best, bestDist, ties := "", maxTypoDistance+1, 0 //gooze:ignore numbers
 
 	for _, k := range keys {
 		switch d := editDistance(key, k); {
 		case d < bestDist:
 			best, bestDist, ties = k, d, 1
-		// Equivalent: the case above already took d < bestDist.
+		// Equivalent: the case above already took d < bestDist, so <= is ==.
 		case d == bestDist: //gooze:ignore comparison
 			ties++
 		}
 	}
 
-	// Equivalent: ties is 0 only when best is "", so > 1 is != 1 (< 1 is killed by a test).
+	// Equivalent: ties is 0 only when best is "", which is returned either way, so > 1 is != 1.
 	if ties != 1 { //gooze:ignore comparison
 		return ""
 	}
@@ -52,16 +52,14 @@ func unique(keys []string, match func(string) bool) (string, bool) {
 			continue
 		}
 
-		// Equivalent: no string sorts below "", so > "" is != "" (< "" is killed by a test).
-		if found != "" { //gooze:ignore comparison
+		if found != "" {
 			return "", false
 		}
 
 		found = k
 	}
 
-	// Equivalent: no string sorts below "", so > "" is != "".
-	return found, found != "" //gooze:ignore comparison
+	return found, found != ""
 }
 
 // schemaKeys lists the dotted key of every field, sections included.
@@ -105,8 +103,7 @@ func editDistance(a, b string) int {
 // a line is invalid YAML, and gooze then ignores the whole file. Quoted text
 // is skipped.
 func unclosedFlow(value string) string {
-	// Equivalent: no string sorts below "", so <= "" is == "" (the bracket comparisons are killed by tests).
-	if value == "" || (value[0] != '[' && value[0] != '{') { //gooze:ignore comparison
+	if value == "" || (value[0] != '[' && value[0] != '{') {
 		return ""
 	}
 
@@ -132,7 +129,7 @@ type flowScan struct {
 
 func (f *flowScan) next(c byte) {
 	switch {
-	// Equivalent: a byte is never negative, so > 0 is != 0.
+	// Equivalent: a byte is unsigned, so > 0 is != 0.
 	case f.quote != 0: //gooze:ignore comparison
 		if c == f.quote {
 			f.quote = 0
@@ -141,7 +138,7 @@ func (f *flowScan) next(c byte) {
 		f.quote = c
 	case c == '[' || c == '{':
 		f.depth++
-	// Equivalent: depth never goes below 0, so != 0 is > 0 (the other comparisons are killed by tests).
+	// Equivalent: depth never goes below 0, so != 0 is > 0.
 	case (c == ']' || c == '}') && f.depth > 0: //gooze:ignore comparison
 		f.depth--
 	}

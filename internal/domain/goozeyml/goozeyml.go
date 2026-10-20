@@ -296,8 +296,7 @@ func (ed Editor) diagnoseEntry(lines []string, path []string, e entry) (model.Di
 		End:   model.Position{Line: e.line, Column: len(lines[e.line])},
 	}
 
-	// Equivalent: no string sorts below "", so > "" is != "".
-	if open := unclosedFlow(e.value); open != "" { //gooze:ignore comparison
+	if open := unclosedFlow(e.value); open != "" {
 		return model.Diagnostic{
 			Range:    valueRange,
 			Severity: model.SeverityError,
@@ -311,8 +310,7 @@ func (ed Editor) diagnoseEntry(lines []string, path []string, e entry) (model.Di
 	f, ok := ed.lookup(path)
 	if !ok {
 		msg := "unknown gooze config key \"" + key + "\""
-		// Equivalent: no string sorts below "", so > "" is != "" (>= "" is killed by a test).
-		if s := ed.suggest(key); s != "" { //gooze:ignore comparison
+		if s := ed.suggest(key); s != "" {
 			msg += "; did you mean \"" + s + "\"?"
 		}
 
