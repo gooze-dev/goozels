@@ -55,3 +55,16 @@ func (p *Process) Kill() error {
 
 	return p.cmd.Process.Kill()
 }
+
+// Run runs a one-shot gopls command (such as `version -json`) at path with
+// its output going to stdout and stderr, and waits for it to finish.
+func Run(ctx context.Context, path string, stdout, stderr io.Writer, args ...string) error {
+	if path == "" {
+		path = "gopls"
+	}
+
+	cmd := exec.CommandContext(ctx, path, args...) //nolint:gosec // operator-controlled, like Start
+	cmd.Stdout, cmd.Stderr = stdout, stderr
+
+	return cmd.Run()
+}

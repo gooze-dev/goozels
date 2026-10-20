@@ -11,6 +11,7 @@ import (
 
 	"gooze.dev/pkg/goozels/internal/adapter/docstore"
 	"gooze.dev/pkg/goozels/internal/adapter/goozecli"
+	"gooze.dev/pkg/goozels/internal/adapter/osfs"
 	"gooze.dev/pkg/goozels/pkg/jsonrpc"
 )
 
@@ -21,6 +22,7 @@ func productionDeps(goozePath string) Deps {
 		Documents: docstore.New(),
 		Reports:   report.NewDirReader(),
 		Config:    config.NewRegistry(),
+		Files:     osfs.FS{},
 	}
 }
 

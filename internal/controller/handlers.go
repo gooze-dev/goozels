@@ -2,6 +2,7 @@ package controller
 
 import (
 	"encoding/json"
+	"strings"
 
 	"gooze.dev/pkg/goozels/internal/domain/document"
 	"gooze.dev/pkg/goozels/internal/domain/ignore"
@@ -76,6 +77,8 @@ func (s *Server) handleClientNotification(msg *jsonrpc.Message) {
 		s.onDidChange(msg)
 	case "textDocument/didClose":
 		s.onDidClose(msg)
+	case "textDocument/didSave":
+		s.onDidSave(msg)
 	default:
 		// Swallow notifications about config documents (gopls doesn't track
 		// them); forward everything else.
@@ -168,6 +171,22 @@ func (s *Server) onDidClose(msg *jsonrpc.Message) {
 	delete(s.goplsDiags, uri)
 	s.mu.Unlock()
 	s.sendGopls(msg)
+}
+
+// onDidSave forwards a Go file's save to gopls. Saving a test file makes the
+// gooze results of the sources it tests out of date, so every open Go file's
+// diagnostics are republished.
+func (s *Server) onDidSave(msg *jsonrpc.Message) {
+	uri := uriOf(msg.Params)
+	if s.isConfigURI(uri) {
+		return
+	}
+
+	s.sendGopls(msg)
+
+	if strings.HasSuffix(uri, "_test.go") {
+		s.refreshReports()
+	}
 }
 
 // --- positional features ---
@@ -270,8 +289,7 @@ func (s *Server) publishMergedGo(uri string, version *int) {
 
 	merged := append([]lsp.Diagnostic{}, goplsDiags...)
 	if text, ok := s.store.Text(uri); ok {
-		merged = append(merged, lspDiagnostics(text, ignore.Diagnose(text))...)
-		merged = append(merged, lspDiagnostics(text, s.reportDiagnostics(uri))...)
+		merged = append(merged, lspDiagnostics(text, s.checker.Check(s.getWorkdir(), lsp.URIPath(uri), text).Diagnostics())...)
 	}
 
 	s.notify("textDocument/publishDiagnostics", lsp.PublishDiagnosticsParams{

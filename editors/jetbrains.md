@@ -2,8 +2,8 @@
 
 JetBrains IDEs run external language servers through the **LSP4IJ** plugin
 (Red Hat). goozels works as one of these servers, giving you `//gooze:ignore`
-support, `gooze.yaml` validation, and the **gooze run / gooze list** code-lens
-actions inside the IDE.
+support, `gooze.yaml` validation, and the **gooze run / gooze run --estimate /
+gooze report** code-lens actions inside the IDE.
 
 ## 1. Install LSP4IJ
 
@@ -32,9 +32,14 @@ Apply, and reopen a `.go` file or a `gooze.yaml`.
 ## 3. Use it
 
 - In `.go` files: completion, hover and a diagnostic for `//gooze:ignore`
-  mutagen names, plus **▶ gooze run** / **gooze list** code lenses at the top of
-  the file. Clicking a lens runs gooze in the workspace root and reports progress
-  via IDE notifications.
+  mutagen names, plus **gooze: run package** / **gooze: estimate** /
+  **gooze: report** code lenses at the top of the file. Clicking a lens runs
+  gooze in the workspace root (run and estimate on the file's package) and
+  reports progress via IDE notifications; the finish message carries the
+  mutation score.
+- Each file's gooze score and surviving mutants appear as diagnostics. After
+  you edit the file (or save its test) they are marked as out of date until
+  gooze runs again.
 - In `gooze.yaml`: key/value completion, hover docs, and validation.
 
 > **GoLand note:** GoLand already has its own Go engine, so for `.go` files the
@@ -46,6 +51,7 @@ Apply, and reopen a `.go` file or a `gooze.yaml`.
 
 ## Running gooze from anywhere
 
-The **gooze run** / **gooze list** actions are also exposed as LSP commands
-(`gooze.run`, `gooze.list`), so any LSP client that lists server commands can
-invoke them — not just via the code lenses.
+The code-lens actions are also exposed as LSP commands (`gooze.run`,
+`gooze.estimate`, `gooze.view`), so any LSP client that lists server commands
+can invoke them — not just via the code lenses. The old `gooze.list` identifier
+still works and runs `gooze run --estimate`, which replaced `gooze list`.

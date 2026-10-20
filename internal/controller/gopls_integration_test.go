@@ -85,7 +85,7 @@ func TestRealGoplsInitialize(t *testing.T) {
 	}
 
 	cmds := strings.Join(result.Capabilities.ExecuteCommandProvider.Commands, ",")
-	for _, want := range []string{"gooze.run", "gooze.list"} {
+	for _, want := range []string{"gooze.run", "gooze.estimate"} {
 		if !strings.Contains(cmds, want) {
 			t.Errorf("executeCommandProvider commands missing %q (got %v)", want, result.Capabilities.ExecuteCommandProvider.Commands)
 		}

@@ -1,9 +1,11 @@
 package controller
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -12,7 +14,6 @@ import (
 	"gooze.dev/pkg/goozels/internal/domain/command"
 	"gooze.dev/pkg/goozels/internal/domain/document"
 	"gooze.dev/pkg/goozels/internal/domain/report"
-	"gooze.dev/pkg/goozels/internal/model"
 	"gooze.dev/pkg/goozels/pkg/jsonrpc"
 	"gooze.dev/pkg/goozels/pkg/lsp"
 )
@@ -20,8 +21,13 @@ import (
 // goozeRunTimeout bounds a single gooze invocation so a hung run can't leak.
 const goozeRunTimeout = time.Hour
 
-// handleCodeLens serves code lenses: gooze run/list lenses are added to gopls's
-// lenses on .go files; config files have none.
+// maxLogBytes caps the gooze output goozels copies into the editor's log: a
+// whole project's `gooze report view` runs to hundreds of kilobytes.
+const maxLogBytes = 16 << 10
+
+// handleCodeLens serves code lenses: gooze run, estimate and report lenses,
+// scoped to the file's package, are added to gopls's lenses on .go files;
+// config files have none.
 func (s *Server) handleCodeLens(msg *jsonrpc.Message) {
 	uri := uriOf(msg.Params)
 	switch {
@@ -38,7 +44,8 @@ func (s *Server) handleCodeLens(msg *jsonrpc.Message) {
 func (s *Server) augmentCodeLens(req, resp *jsonrpc.Message) {
 	uri := uriOf(req.Params)
 	text, _ := s.store.Text(uri)
-	ours := lspCodeLenses(document.Lines(text), command.GoFileLenses("./..."))
+	pattern := command.PackagePattern(s.getWorkdir(), lsp.URIPath(uri))
+	ours := lspCodeLenses(document.Lines(text), command.GoFileLenses(pattern))
 	resp.Result = mergeCodeLensResult(resp.Result, ours)
 	s.sendClient(resp)
 }
@@ -83,17 +90,19 @@ func (s *Server) handleExecuteCommand(msg *jsonrpc.Message) {
 // runGoozeCommand executes a gooze subcommand and reports progress to the editor.
 // It runs on its own goroutine so a long run never blocks the message pump.
 func (s *Server) runGoozeCommand(req *jsonrpc.Message, p lsp.ExecuteCommandParams) {
-	sub, ok := command.Subcommand(p.Command)
+	pattern := firstStringArg(p.Arguments)
+
+	args, ok := command.Args(p.Command, pattern)
 	if !ok {
 		s.respondNull(req)
 		return
 	}
 
-	args := goozeArgs(sub, p.Arguments)
+	label := "gooze " + strings.Join(args, " ")
 
 	s.notify("window/showMessage", lsp.ShowMessageParams{
 		Type:    lsp.MessageInfo,
-		Message: "gooze " + strings.Join(args, " ") + " started…",
+		Message: label + " started…",
 	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), goozeRunTimeout)
@@ -101,50 +110,104 @@ func (s *Server) runGoozeCommand(req *jsonrpc.Message, p lsp.ExecuteCommandParam
 
 	out, err := s.gooze.Run(ctx, s.getWorkdir(), args...)
 
-	s.reportGoozeResult(sub, out, err)
+	s.reportGoozeResult(label, scoreScope(p.Command, pattern), out, err)
 	s.respond(req, nil)
 }
 
-// goozeArgs builds the gooze CLI args for a subcommand: run/list take a package
-// pattern (default "./...") while view takes none.
-func goozeArgs(sub string, rawArgs []json.RawMessage) []string {
-	if sub == "view" {
-		return []string{sub}
+// scoreScope is the package pattern whose score a finished command reports:
+// the pattern a run tested, every package for the report view, and none for
+// an estimate, which changes no results.
+func scoreScope(id, pattern string) string {
+	switch id {
+	case command.Run:
+		return cmp.Or(pattern, "./...")
+	case command.View:
+		return "./..."
+	default:
+		return ""
 	}
-
-	pathArg := "./..."
-
-	if len(rawArgs) > 0 {
-		var a string
-		if json.Unmarshal(rawArgs[0], &a) == nil && a != "" {
-			pathArg = a
-		}
-	}
-
-	return []string{sub, pathArg}
 }
 
-// reportGoozeResult notifies the editor of a run's outcome and, on success,
-// refreshes report-derived diagnostics so a fresh report shows up.
-func (s *Server) reportGoozeResult(sub, out string, err error) {
+// firstStringArg returns the first command argument when it is a non-empty
+// string (the package pattern code lenses pass), or "".
+func firstStringArg(rawArgs []json.RawMessage) string {
+	var a string
+	if len(rawArgs) > 0 && json.Unmarshal(rawArgs[0], &a) == nil {
+		return a
+	}
+
+	return ""
+}
+
+// reportGoozeResult notifies the editor of a run's outcome, with the score of
+// the packages scope selects, and on success refreshes report-derived
+// diagnostics so a fresh report shows up. The output is logged, capped at
+// maxLogBytes.
+func (s *Server) reportGoozeResult(label, scope, out string, err error) {
 	if out != "" {
-		s.notify("window/logMessage", lsp.ShowMessageParams{Type: lsp.MessageLog, Message: out})
+		s.notify("window/logMessage", lsp.ShowMessageParams{Type: lsp.MessageLog, Message: capLog(label, out)})
 	}
 
 	if err != nil {
 		s.notify("window/showMessage", lsp.ShowMessageParams{
 			Type:    lsp.MessageError,
-			Message: "gooze " + sub + " failed: " + err.Error(),
+			Message: label + " failed: " + err.Error(),
 		})
 
 		return
 	}
 
-	s.notify("window/showMessage", lsp.ShowMessageParams{
-		Type:    lsp.MessageInfo,
-		Message: "gooze " + sub + " finished",
-	})
+	msg := label + " finished"
+	if score := s.score(scope); score != "" {
+		msg += " — " + score
+	}
+
+	s.notify("window/showMessage", lsp.ShowMessageParams{Type: lsp.MessageInfo, Message: msg})
 	s.refreshReports()
+}
+
+// score summarizes the reports of the packages a pattern selects, or returns
+// "" when there are none.
+func (s *Server) score(pattern string) string {
+	if pattern == "" {
+		return ""
+	}
+
+	workdir := s.getWorkdir()
+
+	all, err := s.reports.ReadDir(filepath.Join(workdir, config.DefaultReportsDir))
+	if err != nil {
+		return ""
+	}
+
+	matched := report.Matching(all, workdir, pattern)
+	if len(matched) == 0 {
+		return ""
+	}
+
+	return report.ScoreText(report.Summarize(matched))
+}
+
+// capLog shortens command output to maxLogBytes, cut at a line end, and says
+// how much was left out.
+func capLog(label, out string) string {
+	if len(out) <= maxLogBytes {
+		return out
+	}
+
+	cut := strings.LastIndexByte(out[:maxLogBytes], '\n') + 1
+	// Equivalent: cut is LastIndexByte + 1, never negative, so <= 0 is == 0.
+	if cut == 0 { //gooze:ignore comparison
+		cut = maxLogBytes
+	}
+
+	rest, unit := strings.Count(strings.TrimSuffix(out[cut:], "\n"), "\n")+1, " more lines"
+	// Equivalent: at least one line is left out, so <= 1 is == 1.
+	if rest == 1 { //gooze:ignore comparison
+		unit = " more line"
+	}
+
+	return out[:cut] + "… " + strconv.Itoa(rest) + unit + "; run `" + label + "` in a terminal for all of it"
 }
 
 // refreshReports re-publishes diagnostics for every open Go file so newly written
@@ -155,28 +218,6 @@ func (s *Server) refreshReports() {
 			s.republishGo(uri)
 		}
 	}
-}
-
-// reportDiagnostics returns gooze report-derived diagnostics for a .go file: a
-// summary plus best-effort survivor markers. It returns nil when no report exists.
-func (s *Server) reportDiagnostics(uri string) []model.Diagnostic {
-	workdir := s.getWorkdir()
-
-	all, err := s.reports.ReadDir(filepath.Join(workdir, config.DefaultReportsDir))
-	if err != nil {
-		return nil
-	}
-
-	rep := report.ForFile(all, workdir, lsp.URIPath(uri))
-	if len(rep) == 0 {
-		return nil
-	}
-
-	survivors := report.SurvivorDiagnostics(rep)
-	diags := make([]model.Diagnostic, 0, len(survivors)+1)
-	diags = append(diags, report.SummaryDiagnostic(rep))
-
-	return append(diags, survivors...)
 }
 
 // workspaceRoot extracts the workspace root path from initialize params.
