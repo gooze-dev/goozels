@@ -1,0 +1,18 @@
+{
+  "description": "After Claude edits a Go file or gooze config, add goozels' gooze diagnostics (mutation score, surviving mutants, //gooze:ignore and gooze.yaml errors) to its context.",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "goozels",
+            "args": ["hook", "claude"],
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

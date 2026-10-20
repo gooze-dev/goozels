@@ -27,6 +27,22 @@ const (
 	SeverityHint    Severity = 4
 )
 
+// String returns the lowercase severity name used in plain-text output.
+func (s Severity) String() string {
+	switch s {
+	case SeverityError:
+		return "error"
+	case SeverityWarning:
+		return "warning"
+	case SeverityInfo:
+		return "info"
+	case SeverityHint:
+		return "hint"
+	default:
+		return "unknown"
+	}
+}
+
 // CompletionItem is one suggested completion. ReplaceStart/ReplaceEnd are byte
 // columns on the request line that the insertion should replace.
 type CompletionItem struct {

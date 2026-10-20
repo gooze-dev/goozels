@@ -79,12 +79,15 @@ Pick your editor — each guide is a couple of lines of config:
 | **VS Code** | [editors/vscode/README.md](editors/vscode/README.md) — easiest: add `"go.alternateTools": { "gopls": "goozels" }` to settings |
 | **Neovim** | [editors/neovim.md](editors/neovim.md) |
 | **GoLand / IntelliJ** | [editors/jetbrains.md](editors/jetbrains.md) |
-| **Claude Code** | [editors/claude-code/](editors/claude-code/README.md) — a ready-to-load plugin; see [Use with Claude Code](#use-with-claude-code) |
+| **Claude Code** | [editors/claude-code/](editors/claude-code/README.md) — a ready-to-load plugin that works alongside `gopls-lsp`; see [Use with AI coding agents](#use-with-ai-coding-agents) |
+| **Codex** | [editors/codex/](editors/codex/README.md) — a post-edit hook |
+| **opencode** | [editors/opencode/](editors/opencode/README.md) — a plugin for v1 and v2 |
 | **Other LSP editors** | Launch `goozels` over stdio wherever you'd launch `gopls`, and also attach it to `gooze.yaml` files. |
 
-> goozels **replaces** gopls in your editor (it runs gopls for you behind the
+> In an editor, goozels **replaces** gopls (it runs gopls for you behind the
 > scenes). You don't need to configure gopls separately, and you shouldn't run
-> both for the same files.
+> both for the same files. Coding agents are different: they keep their own Go
+> support, and goozels adds gooze diagnostics after each edit.
 
 ## Try it
 
@@ -105,69 +108,80 @@ goozels needs no configuration, but you can point it at specific binaries:
 | `--gopls PATH` | `GOOZELS_GOPLS` | `gopls` on `PATH` | The Go language server to run behind goozels |
 | `--gooze PATH` | `GOOZELS_GOOZE` | `gooze` on `PATH` | The gooze binary used by the run / list buttons |
 
-## Use with Claude Code
+### Check files from the command line
 
-[Claude Code](https://claude.com/claude-code) can use goozels as its Go language
-server. Claude then sees each file's mutation score and surviving-mutant markers
-right after it edits that file, so it can write tests aimed at the mutants that
-survived, rerun gooze, and check that the score went up.
+`goozels check` prints the same gooze diagnostics without an editor, one per line
+in the usual `file:line:column: severity: message` form, and nothing for clean
+files:
 
-### 1. Load the plugin
+```bash
+$ goozels check internal/domain/ignore.go gooze.yaml
+internal/domain/ignore.go:1:1: warning: gooze: 41/129 mutants survived, 2 not covered by any test — score 66%
+internal/domain/ignore.go:208:2: warning: gooze: surviving comparison mutant — tests still pass with: if line == 0 || line > len(lineStarts) {
+gooze.yaml:13:1: error: missing a space after ":"; gooze will ignore this whole file and use its defaults
+```
 
-This repo ships a ready-to-load plugin in
-[`editors/claude-code/`](editors/claude-code/README.md). With goozels installed
-(see [Install](#install)), start Claude Code with it:
+Run it from your project root, or pass `-workdir DIR` to say where
+`.gooze-reports/` lives. `goozels hook claude|codex` wraps the same check for the
+agent hooks below.
+
+## Use with AI coding agents
+
+goozels gives a coding agent the same gooze feedback you get in your editor,
+right after it edits a file:
+
+- the file's **mutation score** (*"gooze: 41/129 mutants survived — score 66%"*),
+- every **surviving mutant**, on its line, with the change your tests missed
+  (*"surviving comparison mutant — tests still pass with: `if line == 0 …`"*),
+- mutants on lines **no test runs**,
+- mistyped `//gooze:ignore` mutagens and `gooze.yaml` errors.
+
+goozels **extends** the agent's Go support instead of replacing it: the agent
+keeps its normal Go tooling, and a post-edit hook adds gooze's view on top.
+
+| Agent | Setup | How the agent gets gooze diagnostics |
+|-------|-------|--------------------------------------|
+| **Claude Code** | [editors/claude-code/](editors/claude-code/README.md) | Plugin hook after `Write`/`Edit`, plus goozels as the language server for `gooze.yaml`. Keep the official `gopls-lsp` plugin on. |
+| **Codex** | [editors/codex/](editors/codex/README.md) | Hook after `apply_patch` (Codex 0.125 or later). |
+| **opencode** | [editors/opencode/](editors/opencode/README.md) | Plugin after `edit`/`write`/patch, for v1 and v2. |
+
+All three need `goozels` on the `PATH` of the shell you start the agent from, and
+`gooze` if the agent should run mutation tests itself.
+
+### Claude Code
 
 ```bash
 claude --plugin-dir /absolute/path/to/goozels/editors/claude-code
 ```
 
 `--plugin-dir` loads the plugin for that session only (it shows up as `@inline`
-in `/plugin`). To install it permanently, publish the directory to a plugin
-marketplace and install it with `/plugin install`.
+in `/plugin`); to install it permanently, publish the directory to a plugin
+marketplace and use `/plugin install`. Leave `gopls-lsp` enabled: it handles
+`.go`, while this plugin handles `.yaml`/`.yml` and the post-edit hook, so they
+never compete for a file.
 
-### 2. Turn off the official gopls plugin
+### Codex
 
-goozels already runs gopls for you. If the official `gopls-lsp` plugin is
-enabled, disable it in `/plugin`, or in your settings:
+Copy [`editors/codex/hooks.json`](editors/codex/hooks.json) to `.codex/hooks.json`
+in your project, then trust it once with `/hooks` (Codex runs a project hook only
+after you review it, and again after it changes). Codex has no language-server
+support, so the hook is the whole integration.
 
-```json
-{
-  "enabledPlugins": {
-    "gopls-lsp@claude-plugins-official": false
-  }
-}
-```
+### opencode
 
-Then run `/reload-plugins`. When two servers claim `.go`, Claude Code uses only
-one, and the `/plugin` **Errors** tab shows
-`LSP server "<name>" is not used for .go files`.
-
-> Claude Code matches language servers by **file extension only**, so the
-> plugin's `.yaml` and `.yml` entries send every YAML file to goozels, not just
-> `gooze.yaml`. goozels only checks gooze config files, but if you'd rather not
-> route other YAML through it, remove those entries from
-> [`editors/claude-code/.lsp.json`](editors/claude-code/.lsp.json).
-
-### What Claude gets
-
-- **Diagnostics after every edit.** When Claude edits a file it automatically
-  receives that file's diagnostics: gopls errors, `//gooze:ignore` mistakes,
-  `gooze.yaml` validation, and the file's mutation score
-  (*"gooze: 2/10 mutants survived — score 80%"*) with survivor markers.
-- **Code navigation.** Go to definition, find references, hover and symbols,
-  passed through to gopls.
-
-Code lenses, completion and the ▶ run buttons are editor-only. Claude runs
-`gooze` itself through its shell instead.
+Copy the plugin for your version (`opencode --version`) to
+`.opencode/plugins/goozels.ts`:
+[`v1/goozels.ts`](editors/opencode/v1/goozels.ts) for 1.x or
+[`v2/goozels.ts`](editors/opencode/v2/goozels.ts) for 2.x. opencode keeps its
+built-in gopls; the plugin appends gooze diagnostics to each edit's result.
 
 ### The loop
 
-1. Run `gooze run ./pkg/...` (or ask Claude to).
-2. Claude opens or edits a file in that package.
-3. It sees *"gooze: N/M mutants survived — score X%"* and the survivor markers.
-4. It writes tests aimed at those mutants.
-5. It reruns gooze and checks that the score went up.
+1. Run `gooze run ./pkg/...` (or ask the agent to).
+2. The agent edits a file in that package and immediately sees its score and
+   surviving mutants.
+3. It writes tests aimed at those mutants.
+4. It reruns gooze and checks that the score went up.
 
 Example prompts:
 
@@ -178,42 +192,46 @@ Example prompts:
 - *"Look at the gooze diagnostics in `parser.go` and tell me which survivors are
   real test gaps and which are equivalent mutants worth a `//gooze:ignore`."*
 
-**Tell Claude about it once.** Add a short note to your project's `CLAUDE.md`:
+Scores only change after gooze runs again, so step 4 matters: a new test doesn't
+move the score until you rerun gooze.
+
+**Tell the agent about it once.** Add this to `CLAUDE.md` (Claude Code) or
+`AGENTS.md` (Codex, opencode):
 
 ```markdown
 ## Mutation testing (gooze)
 - After adding or changing tests, rerun `gooze run <pkg>` for the package you touched.
-- Treat `gooze` diagnostics (mutation score, surviving-mutant markers) as targets:
-  add tests that kill those mutants. Don't change production code just to raise the score.
+- Treat gooze diagnostics (mutation score, surviving mutants) as targets: add tests
+  that kill those mutants. Don't change production code just to raise the score.
+- If you edit Go files with shell commands instead of your edit tool, run
+  `goozels check <file>` afterwards; the post-edit hook only sees edit-tool changes.
 ```
 
-**Skip the permission prompts.** Allow the gooze commands in your settings
-(`.claude/settings.json`):
+**Skip the permission prompts in Claude Code** by allowing the gooze commands in
+`.claude/settings.json`:
 
 ```json
 {
   "permissions": {
-    "allow": ["Bash(gooze run *)", "Bash(gooze list *)"]
+    "allow": ["Bash(gooze run *)", "Bash(gooze list *)", "Bash(goozels check *)"]
   }
 }
 ```
 
-### Troubleshooting (Claude Code)
+### Troubleshooting (agents)
 
-- **Plugin loads but no diagnostics** — open `/plugin` and check the **Errors**
-  tab. `Executable not found in $PATH: "goozels"` means goozels isn't on the
-  `PATH` of the shell you launched `claude` from (see the last item in
-  [Troubleshooting](#troubleshooting)).
-- **Server won't start** — run `claude --debug` and look for
-  `LSP server <name> failed to start`.
-- **Not used for `.go` files** — another Go plugin (usually `gopls-lsp`) is
-  enabled. See step 2.
-- Language-server plugins are not available in cloud sessions or safe mode.
-
-### Known limitations
-
-Survivor markers point at the line as gooze tested it. If Claude (or you) edits
-the file afterwards, markers can drift until you rerun gooze.
+- **No gooze diagnostics after an edit** — run `goozels check <file>` yourself. If
+  it prints nothing, gooze has no findings for that file (or you haven't run gooze
+  yet). If it fails, `goozels` isn't on the agent's `PATH`.
+- **Claude Code** — open `/plugin` and check the **Errors** tab; run
+  `claude --debug` to see hook and language-server failures. Plugins don't run in
+  cloud sessions or safe mode.
+- **Codex** — check that the hook is trusted in `/hooks`; project hooks also need
+  the project's `.codex/` folder to be trusted.
+- **opencode** — make sure you copied the plugin matching your major version; v1
+  plugins don't load in v2.
+- **Markers point at the wrong line** — the file changed since gooze last ran it.
+  Rerun gooze.
 
 ## Troubleshooting
 
