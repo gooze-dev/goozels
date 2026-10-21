@@ -122,19 +122,22 @@ func entryLines(e entry) []line {
 	// Equivalent: only the slice's initial capacity changes.
 	lines := make([]line, 0, len(diags)+1) //gooze:ignore arithmetic,numbers
 
-	if e.brief && len(e.check.Results) > 0 {
-		summary := formatDiagnostic(e.shown, e.check.Results[0])
-		// Equivalent: the enclosing condition has len > 0, so != 1 is > 1.
-		if len(e.check.Results) > 1 { //gooze:ignore comparison
-			summary += briefSuffix
+	survivors := map[model.Diagnostic]bool{}
+
+	if r := e.check.Results; r != nil {
+		if e.brief {
+			summary := formatDiagnostic(e.shown, r.Summary)
+			// Equivalent: a marker count is never negative, so != 0 is > 0.
+			if len(r.Markers) > 0 { //gooze:ignore comparison
+				summary += briefSuffix
+			}
+
+			lines = append(lines, line{text: summary})
 		}
 
-		lines = append(lines, line{text: summary})
-	}
-
-	survivors := map[model.Diagnostic]bool{}
-	for _, d := range e.check.Results[min(1, len(e.check.Results)):] {
-		survivors[d] = true
+		for _, d := range r.Markers {
+			survivors[d] = true
+		}
 	}
 
 	for _, d := range diags {

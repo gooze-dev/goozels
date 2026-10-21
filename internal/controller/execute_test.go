@@ -17,6 +17,7 @@ import (
 	"gooze.dev/pkg/gooze/pkg/config"
 	"gooze.dev/pkg/gooze/pkg/report"
 
+	"gooze.dev/pkg/goozels/internal/domain/command"
 	"gooze.dev/pkg/goozels/pkg/jsonrpc"
 	"gooze.dev/pkg/goozels/pkg/lsp"
 )
@@ -159,7 +160,7 @@ func TestReportDiagnosticsReadsWorkspaceReports(t *testing.T) {
 	s := NewServer(io.Discard, io.Discard, deps)
 	s.setWorkdir("/proj")
 
-	if fc := s.checker.Check("/proj", "/proj/x.go", "package x\n"); len(fc.Results) != 1 || !strings.Contains(fc.Results[0].Message, "score 100.00%") {
+	if fc := s.checker.Check("/proj", "/proj/x.go", "package x\n"); fc.Results == nil || len(fc.Results.Markers) != 0 || !strings.Contains(fc.Results.Summary.Message, "score 100.00%") {
 		t.Errorf("results = %+v, want one summary", fc.Results)
 	}
 	if fc := s.checker.Check("/proj", "/proj/y.go", "package y\n"); fc.Results != nil {
@@ -268,6 +269,8 @@ type recordingGooze struct{ out string }
 
 func (r recordingGooze) Run(context.Context, string, ...string) (string, error) { return r.out, nil }
 
+func (r recordingGooze) RunFlags(context.Context) (map[string]bool, error) { return nil, nil }
+
 // notifications collects what a server writes to the client.
 func notifications(t *testing.T, raw []byte) map[string][]string {
 	t.Helper()
@@ -314,7 +317,8 @@ func TestScoreScope(t *testing.T) {
 		{"gooze.view", "", "./..."},
 		{"gooze.estimate", "./calc", ""},
 	} {
-		if got := scoreScope(c.id, c.pattern); got != c.want {
+		args, _ := command.Args(c.id, c.pattern)
+		if got := scoreScope(c.id, args); got != c.want {
 			t.Errorf("scoreScope(%q, %q) = %q, want %q", c.id, c.pattern, got, c.want)
 		}
 	}
@@ -379,6 +383,10 @@ type failingGooze struct{}
 
 func (failingGooze) Run(context.Context, string, ...string) (string, error) {
 	return "", errors.New("exit status 1")
+}
+
+func (failingGooze) RunFlags(context.Context) (map[string]bool, error) {
+	return nil, errors.New("exit status 1")
 }
 
 func TestReportGoozeResultFailure(t *testing.T) {

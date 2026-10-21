@@ -18,6 +18,11 @@ func (s *Server) handleClient(msg *jsonrpc.Message) {
 	case msg.IsNotification():
 		s.handleClientNotification(msg)
 	case msg.IsResponse():
+		if fn, ok := s.takeClientRequest(msg.IDKey()); ok {
+			fn(msg)
+			return
+		}
+
 		// Response to a gopls-originated request (e.g. workspace/configuration).
 		s.sendGopls(msg)
 	}
@@ -82,6 +87,7 @@ func (s *Server) handleClientNotification(msg *jsonrpc.Message) {
 	case "initialized":
 		// The client is ready for window messages; gopls still needs this too.
 		s.announceUpdate()
+		s.probeGooze()
 		s.sendGopls(msg)
 	default:
 		// Swallow notifications about config documents (gopls doesn't track

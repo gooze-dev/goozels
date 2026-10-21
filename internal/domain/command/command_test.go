@@ -27,15 +27,43 @@ func TestArgs(t *testing.T) {
 	}
 }
 
+func TestArgsRunFunction(t *testing.T) {
+	args, ok := Args(RunFunction, "./calc", "^Add$")
+	if got := strings.Join(args, " "); !ok || got != "run --run ^Add$ ./calc" {
+		t.Errorf("Args(RunFunction) = %q, %v", got, ok)
+	}
+
+	// The pattern stays one argument, whatever it holds.
+	if args, _ := Args(RunFunction, "./calc", "^Parser\\.Next$"); len(args) != 4 || args[2] != "^Parser\\.Next$" {
+		t.Errorf("pattern argument = %q", args)
+	}
+
+	for _, missing := range [][]string{nil, {"./calc"}, {"./calc", ""}} {
+		if args, ok := Args(RunFunction, missing...); ok {
+			t.Errorf("Args(RunFunction, %q) = %q; a function run needs a pattern", missing, args)
+		}
+	}
+
+	if args, ok := Args(RunFunction, "./calc", "^Add$", "extra"); !ok || strings.Join(args, " ") != "run --run ^Add$ ./calc" {
+		t.Errorf("extra arguments are ignored, got %q, %v", args, ok)
+	}
+
+	if args, ok := Args(RunFunction, "", "^Add$"); !ok || args[3] != "./..." {
+		t.Errorf("an empty package means ./..., got %q", args)
+	}
+}
+
 func TestIsGoozeAndNames(t *testing.T) {
-	if !IsGooze(Run) || !IsGooze(Estimate) || !IsGooze(View) || !IsGooze("gooze.list") {
-		t.Error("Run/Estimate/View and the legacy gooze.list should be gooze commands")
+	if !IsGooze(Run) || !IsGooze(Estimate) || !IsGooze(View) || !IsGooze(RunFunction) || !IsGooze("gooze.list") {
+		t.Error("Run/Estimate/View/RunFunction and the legacy gooze.list should be gooze commands")
 	}
-	if IsGooze("gopls.test") {
-		t.Error("gopls command misclassified as gooze")
+	for _, id := range []string{"gopls.test", "gooze.bogus", "gooze.a", ""} {
+		if IsGooze(id) {
+			t.Errorf("%q misclassified as a gooze command", id)
+		}
 	}
-	if got := Names(); len(got) != 3 {
-		t.Errorf("Names len = %d, want 3", len(got))
+	if got := Names(); strings.Join(got, " ") != "gooze.run gooze.estimate gooze.view gooze.runFunction" {
+		t.Errorf("Names = %q", got)
 	}
 }
 

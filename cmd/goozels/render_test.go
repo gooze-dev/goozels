@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"gooze.dev/pkg/goozels/internal/controller"
+	"gooze.dev/pkg/goozels/internal/domain/report"
 	"gooze.dev/pkg/goozels/internal/model"
 )
 
@@ -14,7 +15,7 @@ func diag(line int, sev model.Severity, msg string) model.Diagnostic {
 
 func sampleEntry(shown string) entry {
 	return entry{shown: shown, check: controller.FileCheck{
-		Results: []model.Diagnostic{diag(0, model.SeverityWarning, "summary"), diag(4, model.SeverityWarning, "survivor")},
+		Results: &report.Results{Summary: diag(0, model.SeverityWarning, "summary"), Markers: []model.Diagnostic{diag(4, model.SeverityWarning, "survivor")}},
 		Edit:    []model.Diagnostic{diag(2, model.SeverityError, "bad directive")},
 	}}
 }
@@ -75,7 +76,7 @@ func TestRenderByteBoundary(t *testing.T) {
 }
 
 func TestRenderSummaryOnly(t *testing.T) {
-	e := entry{shown: "a.go", check: controller.FileCheck{Results: []model.Diagnostic{diag(0, model.SeverityInfo, "score")}}}
+	e := entry{shown: "a.go", check: controller.FileCheck{Results: &report.Results{Summary: diag(0, model.SeverityInfo, "score")}}}
 	if out := render([]entry{e}, renderOptions{hint: true}); strings.Join(out.lines, "\n") != "a.go:1:1: info: score" {
 		t.Errorf("a file without survivors gets no hint: %q", out.lines)
 	}

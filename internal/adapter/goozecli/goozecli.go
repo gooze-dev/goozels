@@ -5,6 +5,7 @@ package goozecli
 import (
 	"context"
 	"os/exec"
+	"regexp"
 )
 
 // Runner executes the gooze binary.
@@ -32,4 +33,26 @@ func (r Runner) Run(ctx context.Context, dir string, args ...string) (string, er
 	out, err := cmd.CombinedOutput()
 
 	return string(out), err
+}
+
+// longFlag matches a flag line of gooze's help ("  -p, --parallel int ...")
+// and captures the long name. Only line starts count, so flags a description
+// mentions are not mistaken for supported ones.
+var longFlag = regexp.MustCompile(`(?m)^\s*(?:-\w, )?--([a-z0-9][a-z0-9-]*)`)
+
+// RunFlags lists the long flags `gooze run --help` prints, so callers can
+// tell what the installed gooze supports, e.g. "run" for --run.
+func (r Runner) RunFlags(ctx context.Context) (map[string]bool, error) {
+	// The gooze path is operator-controlled (flags/env); the arguments are fixed.
+	out, err := exec.CommandContext(ctx, r.Path, "run", "--help").Output() //nolint:gosec
+	if err != nil {
+		return nil, err
+	}
+
+	flags := map[string]bool{}
+	for _, m := range longFlag.FindAllStringSubmatch(string(out), -1) {
+		flags[m[1]] = true
+	}
+
+	return flags, nil
 }

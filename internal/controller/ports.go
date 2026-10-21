@@ -48,6 +48,9 @@ type ReleaseChecker interface {
 // Implemented by adapter/goozecli.Runner.
 type GoozeRunner interface {
 	Run(ctx context.Context, dir string, args ...string) (string, error)
+	// RunFlags lists the long flags of the installed gooze's run command,
+	// e.g. "run" for --run, so features can depend on what it supports.
+	RunFlags(ctx context.Context) (map[string]bool, error)
 }
 
 // Documents is the port for the open-document store the controller reads and

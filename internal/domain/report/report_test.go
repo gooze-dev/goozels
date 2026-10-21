@@ -152,7 +152,7 @@ func messages(diags []model.Diagnostic) []string {
 
 func TestDiagnosticsFresh(t *testing.T) {
 	cur := Current{Text: calcSource, Tests: map[string]string{"/w/calc_test.go": "package calc\n"}, Rerun: "gooze run ."}
-	got := messages(Diagnostics([]rpt.Report{calcReport()}, "/w", "/w/calc.go", cur))
+	got := messages(diagnostics([]rpt.Report{calcReport()}, "/w", "/w/calc.go", cur))
 	want := []string{
 		"gooze: score 0.00% — 0 killed, 1 survived",
 		"gooze: surviving comparison mutant — tests still pass with `func f(n int) bool { return n > 0 }` → `func f(n int) bool { return n >= 0 }`",
@@ -160,7 +160,7 @@ func TestDiagnosticsFresh(t *testing.T) {
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Errorf("diagnostics =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
-	if Diagnostics([]rpt.Report{calcReport()}, "/w", "/w/other.go", cur) != nil {
+	if diagnostics([]rpt.Report{calcReport()}, "/w", "/w/other.go", cur) != nil {
 		t.Error("a file without reports should yield nil")
 	}
 }
@@ -169,14 +169,14 @@ func TestDiagnosticsSourceChanged(t *testing.T) {
 	tests := map[string]string{"/w/calc_test.go": "package calc\n"}
 
 	shifted := Current{Text: "package calc\n\n// doc\nfunc f(n int) bool { return n > 0 }\n", Tests: tests, Rerun: "gooze run ."}
-	got := messages(Diagnostics([]rpt.Report{calcReport()}, "/w", "/w/calc.go", shifted))
+	got := messages(diagnostics([]rpt.Report{calcReport()}, "/w", "/w/calc.go", shifted))
 	want := "gooze: results are from before calc.go changed; score then 0.00%; rerun: gooze run ."
 	if len(got) != 1 || got[0] != want {
 		t.Errorf("a moved line must not be marked; got %q, want only %q", got, want)
 	}
 
 	tail := Current{Text: calcSource + "\nfunc g() {}\n", Tests: tests}
-	got = messages(Diagnostics([]rpt.Report{calcReport()}, "/w", "/w/calc.go", tail))
+	got = messages(diagnostics([]rpt.Report{calcReport()}, "/w", "/w/calc.go", tail))
 	if len(got) != 2 || got[0] != "gooze: results are from before calc.go changed; score then 0.00%" {
 		t.Errorf("a line that still reads as tested keeps its marker; got %q", got)
 	}
@@ -184,7 +184,7 @@ func TestDiagnosticsSourceChanged(t *testing.T) {
 
 func TestDiagnosticsTestChanged(t *testing.T) {
 	cur := Current{Text: calcSource, Tests: map[string]string{"/w/calc_test.go": "package calc // edited\n"}, Rerun: "gooze run ."}
-	got := messages(Diagnostics([]rpt.Report{calcReport()}, "/w", "/w/calc.go", cur))
+	got := messages(diagnostics([]rpt.Report{calcReport()}, "/w", "/w/calc.go", cur))
 	if len(got) != 2 || got[0] != "gooze: tests changed since the last run (calc_test.go); score then 0.00%; rerun: gooze run ." {
 		t.Errorf("diagnostics = %q", got)
 	}
@@ -204,7 +204,7 @@ func TestNamesAndResolveNeedAShortPath(t *testing.T) {
 }
 
 func TestDiagnosticsSummaryAtTopOfFile(t *testing.T) {
-	diags := Diagnostics([]rpt.Report{calcReport()}, "/w", "/w/calc.go", Current{Text: calcSource})
+	diags := diagnostics([]rpt.Report{calcReport()}, "/w", "/w/calc.go", Current{Text: calcSource})
 	if diags[0].Range != (model.Range{}) {
 		t.Errorf("summary range = %+v, want the start of the file", diags[0].Range)
 	}
@@ -217,9 +217,19 @@ func TestDiagnosticsStaleKeepsOnlyMatchingLines(t *testing.T) {
 		"file now shorter":              "package calc\n",
 		"file now much shorter":         "x",
 	} {
-		got := messages(Diagnostics([]rpt.Report{r}, "/w", "/w/calc.go", Current{Text: text}))
+		got := messages(diagnostics([]rpt.Report{r}, "/w", "/w/calc.go", Current{Text: text}))
 		if len(got) != 1 {
 			t.Errorf("%s: got %q, want only the stale notice", name, got)
 		}
 	}
+}
+
+// diagnostics is FileResults as one list, nil when no report names the file.
+func diagnostics(reports []rpt.Report, workdir, absPath string, cur Current) []model.Diagnostic {
+	results, ok := FileResults(reports, workdir, absPath, cur)
+	if !ok {
+		return nil
+	}
+
+	return results.All()
 }

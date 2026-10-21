@@ -136,6 +136,10 @@ func (ed Editor) Complete(text string, lineNum, col int) []model.CompletionItem 
 	}
 
 	line := lines[lineNum]
+	if _, _, isItem := listItem(line); isItem {
+		return ed.itemCompletion(lines, lineNum, line, col)
+	}
+
 	if items, ok := ed.valueCompletion(lines, lineNum, line, col); ok {
 		return items
 	}
@@ -159,6 +163,25 @@ func (ed Editor) valueCompletion(lines []string, lineNum int, line string, col i
 	}
 
 	return enumItems(f, line, e.valueStart, col), true
+}
+
+// itemCompletion offers the allowed values of a list key on one of its
+// "- item" lines, or none.
+func (ed Editor) itemCompletion(lines []string, lineNum int, line string, col int) []model.CompletionItem {
+	start, _, _ := listItem(line)
+	if col < start {
+		return nil
+	}
+
+	entries := parseEntries(lines[:lineNum])
+	if len(entries) == 0 {
+		return nil
+	}
+
+	owner := entries[len(entries)-1]
+	path, _ := pathAtIndent(entries, owner.indent)
+
+	return enumItems(ed.itemField(owner, append(path, owner.key), line), line, start, col)
 }
 
 // keyCompletion offers config-key completions for the current indent level,
@@ -257,9 +280,18 @@ func (ed Editor) Diagnose(text string) []model.Diagnostic {
 		broken = -1 // indent of the last malformed line; deeper lines are its children
 	)
 
+	var (
+		owner     entry    // the last entry, which owns the "- item" lines below it
+		ownerPath []string // owner's key path; nil before the first entry
+	)
+
 	for i, line := range lines {
 		e, ok := parseEntry(i, line)
 		if !ok {
+			if d, bad := ed.diagnoseItem(i, line, owner, ownerPath); bad {
+				diags = append(diags, d)
+			}
+
 			if d, bad := malformedLine(i, line); bad {
 				diags = append(diags, d)
 				broken = d.Range.Start.Column
@@ -280,6 +312,7 @@ func (ed Editor) Diagnose(text string) []model.Diagnostic {
 
 		path := entryPath(stack, e)
 		stack = append(stack, e)
+		owner, ownerPath = e, path
 
 		if d, bad := ed.diagnoseEntry(lines, path, e); bad {
 			diags = append(diags, d)
@@ -332,6 +365,67 @@ func (ed Editor) diagnoseEntry(lines []string, path []string, e entry) (model.Di
 		Message:  "invalid value for \"" + key + "\": " + msg,
 		Source:   source,
 	}, true
+}
+
+// diagnoseItem checks a block-list item ("- value") against the allowed
+// values of the list key it belongs to (see itemField). owner is the last
+// entry above the line, at ownerPath; ok is false without one.
+func (ed Editor) diagnoseItem(lineNum int, line string, owner entry, ownerPath []string) (model.Diagnostic, bool) {
+	start, end, isItem := listItem(line)
+	if !isItem {
+		return model.Diagnostic{}, false
+	}
+
+	msg := validateItem(ed.itemField(owner, ownerPath, line), stripQuotes(line[start:end]))
+	if msg == "" {
+		return model.Diagnostic{}, false
+	}
+
+	return model.Diagnostic{
+		Range: model.Range{
+			Start: model.Position{Line: lineNum, Column: start},
+			End:   model.Position{Line: lineNum, Column: end},
+		},
+		Severity: model.SeverityError,
+		Message:  "invalid value for \"" + strings.Join(ownerPath, ".") + "\": " + msg,
+		Source:   source,
+	}, true
+}
+
+// itemField returns the list field a "- item" line belongs to, or the zero
+// Field (which allows any item) when it belongs to none. owner, the entry
+// above the line, must have no inline value and sit at the item's indent or
+// less (YAML allows a sequence at its key's indent).
+func (ed Editor) itemField(owner entry, ownerPath []string, line string) config.Field {
+	if owner.value != "" || owner.indent > leadingSpaces(line) {
+		return config.Field{}
+	}
+
+	// Equivalent: kinds below KindStringList have no allowed values, so > is !=.
+	if f, ok := ed.lookup(ownerPath); ok && f.Kind == config.KindStringList { //gooze:ignore comparison
+		return f
+	}
+
+	return config.Field{}
+}
+
+// listItem returns the byte range of a block-list item's value ("- value #
+// note" gives value's range), and false when line is not a list item.
+func listItem(line string) (start, end int, ok bool) {
+	indent := leadingSpaces(line)
+	rest, ok := strings.CutPrefix(line[indent:], "-")
+
+	// An item's dash ends the line or is followed by a space or a tab; the
+	// appended space covers the bare "-".
+	if !ok || !strings.HasPrefix(rest+" ", " ") && !strings.HasPrefix(rest, "\t") {
+		// Equivalent: callers ignore the range when ok is false.
+		return 0, 0, false //gooze:ignore numbers
+	}
+
+	start = len(line) - len(strings.TrimLeft(rest, " \t"))
+	value := strings.TrimRight(stripComment(line[start:]), " ")
+
+	return start, start + len(value), true
 }
 
 // malformedLine reports a non-blank line that is neither a comment, a list item
@@ -453,10 +547,39 @@ func validateScalar(f config.Field, raw string) string {
 		if !strings.HasPrefix(raw, "{") {
 			return "is a section; put its settings on indented lines below it"
 		}
-	case config.KindString, config.KindStringList:
+	case config.KindStringList:
+		return validateItems(f, raw)
+	case config.KindString:
 	}
 
 	return ""
+}
+
+// validateItems checks the items of a list value ("[a, b]", or a single
+// item) against the field's allowed values, when it has any.
+func validateItems(f config.Field, raw string) string {
+	items := []string{raw}
+	if inner, ok := strings.CutPrefix(raw, "["); ok {
+		items = strings.Split(strings.TrimSuffix(inner, "]"), ",")
+	}
+
+	for _, item := range items {
+		if msg := validateItem(f, stripQuotes(strings.TrimSpace(item))); msg != "" {
+			return msg
+		}
+	}
+
+	return ""
+}
+
+// validateItem checks one list item against the field's allowed values, when
+// it has any.
+func validateItem(f config.Field, item string) string {
+	if len(f.Enum) == 0 || item == "" || slices.Contains(f.Enum, strings.ToLower(item)) {
+		return ""
+	}
+
+	return "unknown item \"" + item + "\"; expected one of: " + strings.Join(f.Enum, ", ")
 }
 
 // validateInt checks raw is an integer within the schema's bounds (e.g.
@@ -522,8 +645,13 @@ func insertText(f config.Field) string {
 }
 
 func kindLabel(f config.Field) string {
-	if f.Kind == config.KindEnum {
+	switch {
+	// Equivalent: KindEnum is the highest kind, so >= KindEnum is == KindEnum.
+	case f.Kind == config.KindEnum: //gooze:ignore comparison
 		return "enum: " + strings.Join(f.Enum, "|")
+	// Equivalent: the only higher kind, KindEnum, returned above.
+	case f.Kind == config.KindStringList && len(f.Enum) > 0: //gooze:ignore comparison
+		return "list: " + strings.Join(f.Enum, "|")
 	}
 
 	return f.Kind.String()

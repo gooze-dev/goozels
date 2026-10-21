@@ -1,6 +1,7 @@
 package goozeyml
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -246,5 +247,172 @@ func TestDiagnoseIntegerBounds(t *testing.T) {
 
 	if diags := newEditor().Diagnose("version: 1\nrun:\n  parallel: 8\n  mutation_timeout: 120\n"); len(diags) != 0 {
 		t.Errorf("in-range values should be accepted, got %+v", diags)
+	}
+}
+
+func TestNewerGoozeKeysAreKnown(t *testing.T) {
+	text := "no-update-check: true\nrun:\n  diff: origin/main\n  mutagens: [comparison]\n"
+	if diags := newEditor().Diagnose(text); len(diags) != 0 {
+		t.Errorf("keys of the gooze in use must be valid, got %+v", diags)
+	}
+
+	items := newEditor().Complete("run:\n  ", 1, 2)
+	for _, want := range []string{"diff", "mutagens"} {
+		if !strings.Contains(strings.Join(labels(items), " "), want) {
+			t.Errorf("expected run.%s in completions, got %v", want, labels(items))
+		}
+	}
+}
+
+func TestDiagnoseListItems(t *testing.T) {
+	const valid = "comparison, logical"
+
+	cases := map[string]struct {
+		text string
+		want string // "" for valid
+	}{
+		"flow list ok":             {"run:\n  mutagens: [" + valid + "]\n", ""},
+		"flow list unknown":        {"run:\n  mutagens: [comparison, bogus]\n", `invalid value for "run.mutagens": unknown item "bogus"; expected one of: arithmetic, boolean, numbers, comparison, logical, unary`},
+		"flow list quoted":         {"run:\n  mutagens: [\"comparison\", 'unary']\n", ""},
+		"single value":             {"run:\n  mutagens: comparison\n", ""},
+		"single value bad":         {"run:\n  mutagens: statement\n", `invalid value for "run.mutagens": unknown item "statement"; expected one of: arithmetic, boolean, numbers, comparison, logical, unary`},
+		"empty flow list":          {"run:\n  mutagens: []\n", ""},
+		"block list ok":            {"run:\n  mutagens:\n    - comparison\n    - logical # why\n", ""},
+		"block list unknown":       {"run:\n  mutagens:\n    - comparison\n    - bogus\n", `invalid value for "run.mutagens": unknown item "bogus"; expected one of: arithmetic, boolean, numbers, comparison, logical, unary`},
+		"block list at key indent": {"run:\n  mutagens:\n  - bogus\n", `invalid value for "run.mutagens": unknown item "bogus"; expected one of: arithmetic, boolean, numbers, comparison, logical, unary`},
+		"other lists unchecked":    {"paths:\n  exclude:\n    - anything\n  exclude2: x\n", `unknown gooze config key "paths.exclude2"`},
+	}
+
+	for name, tc := range cases {
+		diags := newEditor().Diagnose(tc.text)
+
+		switch {
+		case tc.want == "" && len(diags) != 0:
+			t.Errorf("%s: want no diagnostics, got %+v", name, diags)
+		case tc.want != "" && (len(diags) != 1 || !strings.HasPrefix(diags[0].Message, tc.want)):
+			t.Errorf("%s: want %q, got %+v", name, tc.want, diags)
+		}
+	}
+}
+
+func TestDiagnoseBlockListItemRange(t *testing.T) {
+	diags := newEditor().Diagnose("run:\n  mutagens:\n    - bogus   \n")
+	want := model.Range{Start: model.Position{Line: 2, Column: 6}, End: model.Position{Line: 2, Column: 11}}
+
+	if len(diags) != 1 || diags[0].Range != want || diags[0].Severity != model.SeverityError {
+		t.Errorf("diagnostics = %+v, want one error at %+v", diags, want)
+	}
+}
+
+func TestCompleteListItem(t *testing.T) {
+	text := "run:\n  mutagens:\n    - co"
+
+	items := newEditor().Complete(text, 2, 8)
+	if got := strings.Join(labels(items), " "); got != "comparison" {
+		t.Errorf("completions = %q, want comparison", got)
+	}
+
+	if len(items) == 1 && (items[0].ReplaceStart != 6 || items[0].ReplaceEnd != 8) {
+		t.Errorf("replace range = %d..%d, want 6..8", items[0].ReplaceStart, items[0].ReplaceEnd)
+	}
+
+	all := newEditor().Complete("run:\n  mutagens:\n    - ", 2, 6)
+	if len(all) != 6 {
+		t.Errorf("an empty item offers all six mutagens, got %v", labels(all))
+	}
+
+	if got := newEditor().Complete("paths:\n  exclude:\n    - ", 2, 6); len(got) != 0 {
+		t.Errorf("a list without values offers none, got %v", labels(got))
+	}
+}
+
+func TestKindLabelOfAListWithValues(t *testing.T) {
+	items := newEditor().Complete("run:\n  mutag", 1, 7)
+	if len(items) != 1 || items[0].Detail != "list: arithmetic|boolean|numbers|comparison|logical|unary" {
+		t.Errorf("completion detail = %+v", items)
+	}
+}
+
+func TestListItemEdges(t *testing.T) {
+	ed := newEditor()
+
+	quiet := map[string]string{
+		"item without a list key above":       "- bogus\n",
+		"dash without a space is not an item": "run:\n  mutagens:\n    -bogus\n",
+		"owner with an inline value":          "run:\n  mutagens: [comparison]\n    - bogus\n",
+		"owner less indented than item?":      "run:\n  mutagens:\n- bogus\n",
+		"items under an enum key":             "log:\n  level:\n    - bogus\n",
+	}
+	for name, text := range quiet {
+		for _, d := range ed.Diagnose(text) {
+			if strings.Contains(d.Message, "unknown item") {
+				t.Errorf("%s: unexpected %q", name, d.Message)
+			}
+		}
+	}
+
+	if diags := ed.Diagnose("run:\n  mutagens:\n    -\tbogus\n"); len(diags) != 1 || !strings.Contains(diags[0].Message, `unknown item "bogus"`) {
+		t.Errorf("a tab after the dash still starts an item, got %+v", diags)
+	}
+}
+
+func TestCompleteListItemEdges(t *testing.T) {
+	ed := newEditor()
+	has := func(items []model.CompletionItem) bool { return slices.Contains(labels(items), "comparison") }
+
+	if !has(ed.Complete("run:\n  mutagens:\n  - co", 2, 6)) {
+		t.Error("an item at its key's indent completes")
+	}
+
+	for name, c := range map[string]struct {
+		text      string
+		line, col int
+	}{
+		"not an item line":        {"run:\n  mutagens:\n    co", 2, 6},
+		"before the dash":         {"run:\n  mutagens:\n    - co", 2, 4},
+		"no list key above":       {"- co", 0, 4},
+		"owner with inline value": {"run:\n  mutagens: [x]\n    - co", 2, 8},
+		"items under an enum key": {"log:\n  level:\n    - co", 2, 8},
+	} {
+		if items := ed.Complete(c.text, c.line, c.col); has(items) {
+			t.Errorf("%s: offered %v", name, labels(items))
+		}
+	}
+
+	if got := ed.Complete("log:\n  level:\n    - de", 2, 8); len(got) != 0 {
+		t.Errorf("an enum key's values are not list items: %v", labels(got))
+	}
+}
+
+func TestKindLabel(t *testing.T) {
+	cases := map[string]struct {
+		f    config.Field
+		want string
+	}{
+		"enum":                {config.Field{Kind: config.KindEnum, Enum: []string{"a", "b"}}, "enum: a|b"},
+		"list with values":    {config.Field{Kind: config.KindStringList, Enum: []string{"a", "b"}}, "list: a|b"},
+		"list with one value": {config.Field{Kind: config.KindStringList, Enum: []string{"a"}}, "list: a"},
+		"list without values": {config.Field{Kind: config.KindStringList}, "string list"},
+		"string with values":  {config.Field{Kind: config.KindString, Enum: []string{"a"}}, "string"},
+		"int":                 {config.Field{Kind: config.KindInt}, "int"},
+	}
+
+	for name, c := range cases {
+		if got := kindLabel(c.f); got != c.want {
+			t.Errorf("%s: kindLabel = %q, want %q", name, got, c.want)
+		}
+	}
+}
+
+func TestDiagnoseIgnoresBlankAndCommentLines(t *testing.T) {
+	text := "run:\n\n  # how many\n  parallel: 2\n\n  mutagens:\n    # the fast ones\n    - comparison\n\n"
+	if diags := newEditor().Diagnose(text); len(diags) != 0 {
+		t.Errorf("blank and comment lines are fine, got %+v", diags)
+	}
+}
+
+func TestCompleteBareDash(t *testing.T) {
+	if got := newEditor().Complete("run:\n  mutagens:\n    -", 2, 5); len(got) != 6 {
+		t.Errorf("a bare dash starts an item, got %v", labels(got))
 	}
 }

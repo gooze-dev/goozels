@@ -143,6 +143,20 @@ type ShowMessageParams struct {
 	Message string `json:"message"`
 }
 
+// ShowMessageRequestParams is the payload of window/showMessageRequest: a
+// message with buttons the user can choose from.
+type ShowMessageRequestParams struct {
+	Type    int                 `json:"type"`
+	Message string              `json:"message"`
+	Actions []MessageActionItem `json:"actions,omitempty"`
+}
+
+// MessageActionItem is one button of a window/showMessageRequest, and the
+// client's reply when the user chooses it.
+type MessageActionItem struct {
+	Title string `json:"title"`
+}
+
 // Message types (LSP MessageType).
 const (
 	MessageError = 1
