@@ -5,13 +5,15 @@ import (
 
 	"gooze.dev/pkg/goozels/internal/adapter/docstore"
 	"gooze.dev/pkg/goozels/internal/adapter/goozecli"
+	"gooze.dev/pkg/goozels/internal/adapter/releasecheck"
 )
 
 // Compile-time assertions that the production adapters satisfy the controller's
 // ports. These fail to build (not just fail at runtime) if a port drifts.
 var (
-	_ GoozeRunner = goozecli.Runner{}
-	_ Documents   = (*docstore.Store)(nil)
+	_ GoozeRunner    = goozecli.Runner{}
+	_ Documents      = (*docstore.Store)(nil)
+	_ ReleaseChecker = (*releasecheck.Checker)(nil)
 )
 
 func TestPortsSatisfied(t *testing.T) {

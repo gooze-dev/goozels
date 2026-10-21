@@ -43,12 +43,17 @@ func newHarness(t *testing.T, fakeGopls func(req *jsonrpc.Message) *jsonrpc.Mess
 
 func newHarnessWithGooze(t *testing.T, fakeGopls func(req *jsonrpc.Message) *jsonrpc.Message, goozePath string) *harness {
 	t.Helper()
+	return newHarnessWithDeps(t, fakeGopls, productionDeps(goozePath))
+}
+
+func newHarnessWithDeps(t *testing.T, fakeGopls func(req *jsonrpc.Message) *jsonrpc.Message, deps Deps) *harness {
+	t.Helper()
 	c2sR, c2sW := io.Pipe() // client -> server
 	s2cR, s2cW := io.Pipe() // server -> client
 	g2sR, g2sW := io.Pipe() // gopls -> server
 	s2gR, s2gW := io.Pipe() // server -> gopls
 
-	srv := NewServer(s2cW, s2gW, productionDeps(goozePath))
+	srv := NewServer(s2cW, s2gW, deps)
 	go func() { _ = srv.Run(c2sR, g2sR) }()
 
 	h := &harness{

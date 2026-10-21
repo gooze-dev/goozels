@@ -10,11 +10,11 @@ import (
 const usage = `goozels: gooze mutation-testing support for editors and coding agents.
 
 Usage:
-  goozels [-gopls PATH] [-gooze PATH] [serve] [-- GOPLS-ARGS...]
+  goozels [-gopls PATH] [-gooze PATH] [-no-update-check] [serve] [-- GOPLS-ARGS...]
       Run the language server on stdin/stdout. Editors start goozels this way,
       in place of gopls; it runs gopls behind the scenes and adds gooze
       features. Arguments after -- are passed to gopls.
-  goozels check [-workdir DIR] [-max N] FILE...
+  goozels check [-workdir DIR] [-max N] [-no-update-check] FILE...
       Print gooze diagnostics for files as "file:line:col: severity: message".
       The workspace root (where .gooze-reports lives) is found by walking up
       from each file. Exit status: 0 no errors, 1 an error diagnostic was
@@ -32,10 +32,15 @@ Usage:
 Language server flags:
   -gopls PATH   gopls binary to proxy (default "gopls" on PATH)
   -gooze PATH   gooze binary run by the code lenses (default "gooze" on PATH)
+  -no-update-check
+                do not check for a newer goozels release (the check reads a
+                daily-refreshed cache and never waits on the network)
 
 Environment:
   GOOZELS_GOPLS   default for -gopls
   GOOZELS_GOOZE   default for -gooze
+  GOOZELS_NO_UPDATE_CHECK
+                  any value: same as -no-update-check
 `
 
 // terminalHint is printed when the language server's stdin is a terminal,

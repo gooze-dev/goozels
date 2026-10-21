@@ -124,10 +124,17 @@ goozels needs no configuration, but you can point it at specific binaries:
 |------|----------------------|---------|---------|
 | `--gopls PATH` | `GOOZELS_GOPLS` | `gopls` on `PATH` | The Go language server to run behind goozels |
 | `--gooze PATH` | `GOOZELS_GOOZE` | `gooze` on `PATH` | The gooze binary the code lenses run |
+| `--no-update-check` | `GOOZELS_NO_UPDATE_CHECK` | off | Skip the check for a newer goozels release |
 
 Arguments after `--` are passed to gopls (`goozels -- -rpc.trace`); `serve`
 (gopls's name for the server mode) is accepted and ignored. Any other argument
 is an error.
+
+When the last known goozels release is newer than yours, the language server
+shows a warning in your editor and `goozels check` prints it to stderr. That
+answer comes from a cache refreshed in the background from the Go module proxy
+at most once a day. Nothing waits for the network, so being offline has no
+effect. Agent hooks never check.
 
 ### Check files from the command line
 

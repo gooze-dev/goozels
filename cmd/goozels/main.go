@@ -56,8 +56,9 @@ func run(args []string) int {
 
 // serveFlags are the language server's options.
 type serveFlags struct {
-	gopls, gooze string
-	goplsArgs    []string
+	gopls, gooze  string
+	noUpdateCheck bool
+	goplsArgs     []string
 }
 
 // parseServe parses the language server's command line: its flags, an
@@ -75,6 +76,7 @@ func parseServe(args []string, stderr io.Writer) (serveFlags, error) {
 	fs.Usage = func() { _, _ = fmt.Fprint(stderr, usage) }
 	fs.StringVar(&f.gopls, "gopls", envOr("GOOZELS_GOPLS", "gopls"), "path to the gopls binary to proxy")
 	fs.StringVar(&f.gooze, "gooze", envOr("GOOZELS_GOOZE", "gooze"), "path to the gooze binary for code-lens commands")
+	fs.BoolVar(&f.noUpdateCheck, "no-update-check", false, "do not check for a newer goozels release (also "+noUpdateCheckEnv+")")
 
 	if err := fs.Parse(args); err != nil {
 		return f, err
@@ -119,6 +121,8 @@ func serve(args []string) int {
 		Reports:   reportcache.New(report.NewDirReader()),
 		Config:    config.NewRegistry(),
 		Files:     osfs.FS{},
+		Releases:  releaseChecker(f.noUpdateCheck, version()),
+		Version:   version(),
 	})
 	_ = srv.Run(os.Stdin, proc.Stdout)
 

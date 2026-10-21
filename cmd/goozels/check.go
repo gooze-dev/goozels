@@ -18,7 +18,7 @@ import (
 	"gooze.dev/pkg/goozels/internal/model"
 )
 
-const checkUsage = "usage: goozels check [-workdir DIR] [-max N] FILE..."
+const checkUsage = "usage: goozels check [-workdir DIR] [-max N] [-no-update-check] FILE..."
 
 // newChecker wires the checker to gooze's report reader and config schema, as
 // the language server does. Rerun commands are given for a reader in cwd.
@@ -31,9 +31,10 @@ func newChecker(cwd string) controller.Checker {
 	}
 }
 
-// runCheck implements `goozels check [-workdir DIR] [-max N] FILE...`: it
-// prints gooze diagnostics as "path:line:col: severity: message" lines. A Go
-// file gooze has no results for gets a note on stderr. It returns 2 on usage
+// runCheck implements `goozels check [-workdir DIR] [-max N] [-no-update-check]
+// FILE...`: it prints gooze diagnostics as "path:line:col: severity: message"
+// lines. A Go file gooze has no results for gets a note on stderr, as does a
+// newer goozels release. It returns 2 on usage
 // errors, 1 when an error diagnostic was printed or a file cannot be read, and
 // 0 otherwise.
 func runCheck(args []string, stdout, stderr io.Writer) int {
@@ -42,6 +43,7 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 	workdir := fs.String("workdir", "", "workspace root containing gooze's "+config.DefaultReportsDir+
 		" directory (default: the nearest directory above each file that has one, else its go.mod directory)")
 	maxLines := fs.Int("max", 0, "print at most N diagnostics, then a line naming the files with more (0: no limit)")
+	noUpdateCheck := fs.Bool("no-update-check", false, "do not check for a newer goozels release (also "+noUpdateCheckEnv+")")
 
 	// Equivalent: NArg counts arguments and is never negative, so <= 0 is == 0.
 	if err := fs.Parse(args); err != nil || fs.NArg() == 0 || *maxLines < 0 { //gooze:ignore comparison
@@ -49,6 +51,9 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 
 		return 2
 	}
+
+	// Printed last, so the notice follows the diagnostics.
+	defer updateNoticePrinter(*noUpdateCheck, stderr)()
 
 	cwd, _ := os.Getwd()
 	checker := newChecker(cwd)
