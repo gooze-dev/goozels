@@ -7,7 +7,10 @@ import (
 
 // probeTimeout bounds asking gooze for its flags, so a hung binary cannot
 // leave the probe running for the whole session.
-const probeTimeout = 10 * time.Second
+//
+// Equivalent: the exact bound is a tuning choice; any duration long enough
+// for gooze to print its help behaves the same.
+const probeTimeout = 10 * time.Second //gooze:ignore arithmetic,numbers
 
 // probeGooze asks the installed gooze, once per session and in the
 // background, which run flags it supports. Until it answers, nothing is.
