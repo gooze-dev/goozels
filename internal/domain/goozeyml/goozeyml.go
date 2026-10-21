@@ -537,8 +537,8 @@ func validateScalar(f config.Field, raw string) string {
 		if !isBoolWord(raw) {
 			return "expected a boolean (true or false)"
 		}
-	case config.KindInt:
-		return validateInt(f, raw)
+	case config.KindInt, config.KindFloat:
+		return validateNumber(f, raw)
 	case config.KindEnum:
 		return validateEnum(f, raw)
 	case config.KindObject:
@@ -582,6 +582,16 @@ func validateItem(f config.Field, item string) string {
 	return "unknown item \"" + item + "\"; expected one of: " + strings.Join(f.Enum, ", ")
 }
 
+// validateNumber checks raw is a number of the field's kind, within its
+// bounds.
+func validateNumber(f config.Field, raw string) string {
+	if f.Kind == config.KindFloat {
+		return validateFloat(f, raw)
+	}
+
+	return validateInt(f, raw)
+}
+
 // validateInt checks raw is an integer within the schema's bounds (e.g.
 // run.parallel >= 1), the same bounds gooze run enforces.
 func validateInt(f config.Field, raw string) string {
@@ -591,6 +601,21 @@ func validateInt(f config.Field, raw string) string {
 	}
 
 	if err := f.CheckInt(n); err != nil {
+		return err.Error()
+	}
+
+	return ""
+}
+
+// validateFloat checks raw is a number within the schema's bounds (e.g. a
+// threshold between 0 and 100), the same bounds gooze enforces.
+func validateFloat(f config.Field, raw string) string {
+	x, err := strconv.ParseFloat(raw, 64)
+	if err != nil {
+		return "expected a number"
+	}
+
+	if err := f.CheckFloat(x); err != nil {
 		return err.Error()
 	}
 
@@ -646,10 +671,10 @@ func insertText(f config.Field) string {
 
 func kindLabel(f config.Field) string {
 	switch {
-	// Equivalent: KindEnum is the highest kind, so >= KindEnum is == KindEnum.
-	case f.Kind == config.KindEnum: //gooze:ignore comparison
+	case f.Kind == config.KindEnum:
 		return "enum: " + strings.Join(f.Enum, "|")
-	// Equivalent: the only higher kind, KindEnum, returned above.
+	// Equivalent: of the higher kinds, KindEnum returned above and KindFloat
+	// has no allowed values.
 	case f.Kind == config.KindStringList && len(f.Enum) > 0: //gooze:ignore comparison
 		return "list: " + strings.Join(f.Enum, "|")
 	}

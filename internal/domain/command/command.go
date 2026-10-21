@@ -6,6 +6,7 @@
 package command
 
 import (
+	"errors"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -26,6 +27,11 @@ const (
 	// editor configs that call it keep working.
 	legacyList = "gooze.list"
 )
+
+// ErrBelowThreshold is the error of a gooze command that completed, but with
+// a score below a threshold set in gooze.yaml (gooze's exit code 3). Its
+// reports are written, so they are shown like a success's.
+var ErrBelowThreshold = errors.New("score below a gooze threshold")
 
 // defaultPattern is the package pattern used when a command gets none.
 const defaultPattern = "./..."

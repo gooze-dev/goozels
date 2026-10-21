@@ -495,3 +495,11 @@ func TestRunFunctionWithoutARunDir(t *testing.T) {
 		t.Errorf("no reports means no merge offer, got %d requests", len(s.clientRequests))
 	}
 }
+
+func TestRunFunctionBelowAThresholdStillOffersTheMerge(t *testing.T) {
+	h := functionRunSession(t, belowThresholdGooze{})
+
+	if req := h.awaitRequest(t, "window/showMessageRequest"); !strings.Contains(string(req.Params), command.MergeTitle) {
+		t.Errorf("a run below a threshold still wrote reports to merge, got %s", req.Params)
+	}
+}
