@@ -4,7 +4,7 @@ go 1.27.3
 
 require (
 	github.com/stretchr/testify v1.12.1
-	gooze.dev/pkg/gooze v1.2.0
+	gooze.dev/pkg/gooze v1.2.1-0.20261021113622-a533f1cd98ce
 )
 
 require (

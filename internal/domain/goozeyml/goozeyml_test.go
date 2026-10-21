@@ -248,3 +248,17 @@ func TestDiagnoseIntegerBounds(t *testing.T) {
 		t.Errorf("in-range values should be accepted, got %+v", diags)
 	}
 }
+
+func TestNewerGoozeKeysAreKnown(t *testing.T) {
+	text := "no-update-check: true\nrun:\n  diff: origin/main\n  mutagens: [comparison]\n"
+	if diags := newEditor().Diagnose(text); len(diags) != 0 {
+		t.Errorf("keys of the gooze in use must be valid, got %+v", diags)
+	}
+
+	items := newEditor().Complete("run:\n  ", 1, 2)
+	for _, want := range []string{"diff", "mutagens"} {
+		if !strings.Contains(strings.Join(labels(items), " "), want) {
+			t.Errorf("expected run.%s in completions, got %v", want, labels(items))
+		}
+	}
+}
