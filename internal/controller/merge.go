@@ -17,16 +17,26 @@ import (
 // offerMerge tells the editor a function run's score and offers to fold its
 // reports into the main reports, which the editor shows. A function run
 // writes to the reports' run directory, which goozels does not read, so
-// nothing changes on screen until the user merges.
-func (s *Server) offerMerge() {
+// nothing changes on screen until the user merges. A run that re-tested
+// nothing (the function is cached, or has no mutants) only says so. args
+// are the run's gooze arguments: run --run <pattern> <package>.
+func (s *Server) offerMerge(args []string) {
 	runDir := filepath.Join(config.DefaultReportsDir, command.RunReportsDir)
 
-	msg := "gooze: function run done"
-	if reports, err := s.reports.ReadDir(filepath.Join(s.getWorkdir(), runDir)); err == nil {
-		msg += " — " + report.ScoreText(report.Summarize(reports))
+	reports, err := s.reports.ReadDir(filepath.Join(s.getWorkdir(), runDir))
+	if err != nil || len(reports) == 0 {
+		pattern, pkg := args[2], args[3]
+		s.notify("window/showMessage", lsp.ShowMessageParams{
+			Type: lsp.MessageInfo,
+			Message: "gooze: nothing re-tested for " + pattern + ": it is unchanged since the last run, so its results are already shown, or it has nothing to mutate. " +
+				"To test it again anyway: gooze run --no-cache --run '" + pattern + "' " + pkg,
+		})
+
+		return
 	}
 
-	msg += ". Its reports are in " + filepath.ToSlash(runDir) + " until you merge them into the main reports."
+	msg := "gooze: function run done — " + report.ScoreText(report.Summarize(reports)) +
+		". Its reports are in " + filepath.ToSlash(runDir) + " until you merge them into the main reports."
 
 	s.requestClient("window/showMessageRequest", lsp.ShowMessageRequestParams{
 		Type:    lsp.MessageInfo,

@@ -119,7 +119,7 @@ func (s *Server) runGoozeCommand(req *jsonrpc.Message, p lsp.ExecuteCommandParam
 	s.reportGoozeResult(label, scoreScope(p.Command, args), out, err)
 
 	if p.Command == command.RunFunction && err == nil {
-		s.offerMerge()
+		s.offerMerge(args)
 	}
 
 	s.respond(req, nil)

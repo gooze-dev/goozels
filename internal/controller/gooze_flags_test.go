@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"slices"
 	"strings"
 	"sync"
@@ -266,8 +267,21 @@ func (h *harness) answer(t *testing.T, req *jsonrpc.Message, result any) {
 func functionRunSession(t *testing.T, gooze GoozeRunner) *harness {
 	t.Helper()
 
+	return functionRunSessionIn(t, gooze, true)
+}
+
+// functionRunSessionIn is functionRunSession, with or without reports in run/
+// (a run with nothing to re-test leaves none).
+func functionRunSessionIn(t *testing.T, gooze GoozeRunner, withRunReports bool) *harness {
+	t.Helper()
+
 	dir := projectCopy(t)
-	copyReports(t, filepath.Join(dir, config.DefaultReportsDir, "run"))
+	if withRunReports {
+		copyReports(t, filepath.Join(dir, config.DefaultReportsDir, "run"))
+	} else if err := os.MkdirAll(filepath.Join(dir, config.DefaultReportsDir, "run"), 0o750); err != nil {
+		// gooze leaves an empty run/ when it re-tested nothing.
+		t.Fatal(err)
+	}
 
 	deps := productionDeps("gooze")
 	deps.Gooze = gooze
@@ -425,5 +439,59 @@ func TestRunFunctionMergeNeedsTheMergeButton(t *testing.T) {
 
 	if len(runs) != 1 {
 		t.Errorf("gooze runs = %q, want only the function run", runs)
+	}
+}
+
+func TestRunFunctionThatTestedNothing(t *testing.T) {
+	var (
+		mu   sync.Mutex
+		runs [][]string
+	)
+
+	h := functionRunSessionIn(t, argsGooze{mu: &mu, runs: &runs}, false)
+
+	want := "gooze: nothing re-tested for ^Add$: it is unchanged since the last run, so its results are already shown, or it has nothing to mutate. To test it again anyway: gooze run --no-cache --run '^Add$' ./calc"
+
+	deadline := time.After(3 * time.Second)
+
+	for {
+		select {
+		case msg := <-h.inbox:
+			if msg.Method == "window/showMessageRequest" {
+				t.Fatalf("nothing to merge, but got an offer: %s", msg.Params)
+			}
+
+			var p lsp.ShowMessageParams
+			if msg.Method == "window/showMessage" && json.Unmarshal(msg.Params, &p) == nil && strings.HasPrefix(p.Message, "gooze: nothing re-tested") {
+				if p.Message != want || p.Type != lsp.MessageInfo {
+					t.Errorf("message = %+v\nwant %q", p, want)
+				}
+
+				return
+			}
+		case <-deadline:
+			t.Fatal("no message about the cached function")
+		}
+	}
+}
+
+func TestRunFunctionWithoutARunDir(t *testing.T) {
+	dir := projectCopy(t)
+
+	var (
+		mu   sync.Mutex
+		runs [][]string
+	)
+
+	deps := productionDeps("gooze")
+	deps.Gooze = argsGooze{mu: &mu, runs: &runs}
+	s := NewServer(io.Discard, io.Discard, deps)
+	s.setWorkdir(dir)
+
+	// No run/ at all (an older gooze, or a cleaned folder) is not an error.
+	s.offerMerge([]string{"run", "--run", "^Add$", "./calc"})
+
+	if len(s.clientRequests) != 0 {
+		t.Errorf("no reports means no merge offer, got %d requests", len(s.clientRequests))
 	}
 }
