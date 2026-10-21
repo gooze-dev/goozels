@@ -79,6 +79,10 @@ func (s *Server) handleClientNotification(msg *jsonrpc.Message) {
 		s.onDidClose(msg)
 	case "textDocument/didSave":
 		s.onDidSave(msg)
+	case "initialized":
+		// The client is ready for window messages; gopls still needs this too.
+		s.announceUpdate()
+		s.sendGopls(msg)
 	default:
 		// Swallow notifications about config documents (gopls doesn't track
 		// them); forward everything else.
