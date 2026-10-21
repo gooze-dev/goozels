@@ -248,16 +248,15 @@ type change struct {
 	mutated string // replacement text, trimmed; empty when the line was removed
 }
 
-// diffChanges extracts the original lines a unified diff ("--- original",
-// "+++ mutated", "@@ -a,b +c,d @@" hunks) removes, pairing each with the added
-// line that replaced it. gooze's hunks carry three lines of context, so the
-// changed line is not the hunk's first line. Lines the diff removes and adds
-// back unchanged (gooze rewrites a file's tail that way) are left out.
+// diffChanges extracts the original lines a report's unified diff removes,
+// each paired with the line that replaced it, using gooze's own diff reader.
+// Lines the diff removes and adds back unchanged (gooze rewrites a file's tail
+// that way) are left out.
 func diffChanges(diff string) []change {
 	var changed []change
 
-	for _, c := range diffLines(diff) {
-		if strings.TrimSpace(c.text) != c.mutated {
+	for _, rc := range rpt.DiffChanges([]byte(diff)) {
+		if c := markerChange(rc); strings.TrimSpace(c.text) != c.mutated {
 			changed = append(changed, c)
 		}
 	}
@@ -265,63 +264,16 @@ func diffChanges(diff string) []change {
 	return changed
 }
 
-// diffLines is diffChanges before dropping unchanged lines.
-func diffLines(diff string) []change {
-	var (
-		changes []change
-		old     = -1 // next original line (one-based); -1 until the first hunk
-		// pending indexes the first unpaired removal in changes. Equivalent
-		// mutants: it is reset at the first hunk header, before any change.
-		pending = 0 //gooze:ignore numbers
-	)
+// markerChange adds what a marker needs to a changed line: a zero-based line,
+// the columns its code spans, and the trimmed replacement.
+func markerChange(rc rpt.Change) change {
+	indent := len(rc.Original) - len(strings.TrimLeft(rc.Original, " \t"))
 
-	for l := range strings.SplitSeq(diff, "\n") {
-		switch {
-		case strings.HasPrefix(l, "@@"):
-			old = hunkOldStart(l)
-			pending = len(changes)
-		// Equivalent: old is -1 before the first hunk and at least 1 after it.
-		case old < 0 || strings.HasPrefix(l, "\\"): //gooze:ignore comparison,numbers
-			// File headers before the first hunk and "\ No newline at end of file".
-		case strings.HasPrefix(l, "-"):
-			changes = append(changes, removedLine(old-1, l[1:]))
-			old++
-		case strings.HasPrefix(l, "+"):
-			// Equivalent: pending never exceeds len(changes), so != is <.
-			if pending < len(changes) { //gooze:ignore comparison
-				changes[pending].mutated = strings.TrimSpace(l[1:])
-				pending++
-			}
-		default: // context line (" text", or "" for a blank line)
-			old++
-			pending = len(changes)
-		}
+	return change{
+		line:    max(rc.Line-1, 0),
+		indent:  indent,
+		end:     len(rc.Original),
+		text:    rc.Original,
+		mutated: strings.TrimSpace(rc.Mutated),
 	}
-
-	return changes
-}
-
-func removedLine(line int, text string) change {
-	indent := len(text) - len(strings.TrimLeft(text, " \t"))
-
-	return change{line: max(line, 0), indent: indent, end: len(text), text: text}
-}
-
-// hunkOldStart returns the one-based original start line from a hunk header
-// ("@@ -a,b +c,d @@"), or -1 when the header is malformed.
-func hunkOldStart(header string) int {
-	_, after, ok := strings.Cut(header, "-")
-	if !ok {
-		return -1
-	}
-
-	num, _, _ := strings.Cut(after, " ")
-	num, _, _ = strings.Cut(num, ",")
-
-	n, err := strconv.Atoi(num)
-	if err != nil || n < 1 {
-		return -1
-	}
-
-	return n
 }

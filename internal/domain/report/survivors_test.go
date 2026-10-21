@@ -210,12 +210,13 @@ func TestDiffChangesEdges(t *testing.T) {
 	if len(got) != 1 || got[0].line != 0 {
 		t.Errorf("a change on the first line = %+v, want line 0", got)
 	}
-	if c := removedLine(0, "\t\tx"); c.indent != 2 {
+	if c := markerChange(rpt.Change{Line: 1, Original: "\t\tx"}); c.indent != 2 {
 		t.Errorf("indent = %d, want 2", c.indent)
 	}
+	// A malformed or zero start line hides the hunk's changes.
 	for _, h := range []string{"@@ -0,0 +1,1 @@", "@@ -abc +1 @@", "@@ garbage @@"} {
-		if got := hunkOldStart(h); got != -1 {
-			t.Errorf("hunkOldStart(%q) = %d, want -1", h, got)
+		if got := diffChanges(h + "\n-x\n+y\n"); got != nil {
+			t.Errorf("diffChanges after %q = %+v, want none", h, got)
 		}
 	}
 }
