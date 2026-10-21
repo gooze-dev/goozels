@@ -82,6 +82,7 @@ func (s *Server) handleClientNotification(msg *jsonrpc.Message) {
 	case "initialized":
 		// The client is ready for window messages; gopls still needs this too.
 		s.announceUpdate()
+		s.probeGooze()
 		s.sendGopls(msg)
 	default:
 		// Swallow notifications about config documents (gopls doesn't track

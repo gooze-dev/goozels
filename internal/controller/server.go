@@ -31,6 +31,9 @@ type Server struct {
 	releases ReleaseChecker
 	version  string
 	announce sync.Once
+	probe    sync.Once
+
+	goozeFlags map[string]bool // gooze run flags found by probeGooze; guarded by mu
 
 	mu         sync.Mutex
 	pending    map[string]func(resp *jsonrpc.Message) // gopls response augmenters, keyed by request id

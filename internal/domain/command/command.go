@@ -7,6 +7,7 @@ package command
 
 import (
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"gooze.dev/pkg/goozels/internal/model"
@@ -17,6 +18,8 @@ const (
 	Run      = "gooze.run"
 	Estimate = "gooze.estimate"
 	View     = "gooze.view"
+	// RunFunction runs gooze on the functions a `--run` pattern matches.
+	RunFunction = "gooze.runFunction"
 
 	// legacyList is the identifier goozels advertised for the removed
 	// `gooze list` command. It still runs the estimate, which replaced it, so
@@ -27,19 +30,30 @@ const (
 // defaultPattern is the package pattern used when a command gets none.
 const defaultPattern = "./..."
 
-// Args returns the gooze CLI arguments a command identifier runs. pathArg is the
-// package pattern for the commands that take one; empty means "./...". The
-// second result is false for unknown identifiers.
-func Args(id, pathArg string) ([]string, bool) {
-	if pathArg == "" {
-		pathArg = defaultPattern
+// runSubcommand is gooze's subcommand for mutation runs and estimates.
+const runSubcommand = "run"
+
+// Args returns the gooze CLI arguments a command identifier runs. The first of
+// args is the package pattern for the commands that take one (empty means
+// "./..."); RunFunction also needs a --run pattern second. The second result is
+// false for unknown identifiers and missing patterns.
+func Args(id string, args ...string) ([]string, bool) {
+	pathArg := defaultPattern
+	if len(args) > 0 && args[0] != "" {
+		pathArg = args[0]
 	}
 
 	switch id {
+	case RunFunction:
+		if len(args) < 2 || args[1] == "" {
+			return nil, false
+		}
+
+		return []string{runSubcommand, "--run", args[1], pathArg}, true
 	case Run:
-		return []string{"run", pathArg}, true
+		return []string{runSubcommand, pathArg}, true
 	case Estimate, legacyList:
-		return []string{"run", "--estimate", pathArg}, true
+		return []string{runSubcommand, "--estimate", pathArg}, true
 	case View:
 		return []string{"report", "view"}, true
 	default:
@@ -48,12 +62,12 @@ func Args(id, pathArg string) ([]string, bool) {
 }
 
 // Names returns every command identifier goozels advertises.
-func Names() []string { return []string{Run, Estimate, View} }
+func Names() []string { return []string{Run, Estimate, View, RunFunction} }
 
-// IsGooze reports whether id is one of goozels' commands.
+// IsGooze reports whether id is one of goozels' commands, including the
+// legacy gooze.list.
 func IsGooze(id string) bool {
-	_, ok := Args(id, "")
-	return ok
+	return id == legacyList || slices.Contains(Names(), id)
 }
 
 // PackagePattern returns the gooze path pattern that selects the package of
@@ -80,9 +94,10 @@ func RunCommandLine(pattern string) string {
 
 // Lens titles, kept plain (no icons) so screen readers announce them cleanly.
 const (
-	RunTitle      = "gooze: run package"
-	EstimateTitle = "gooze: estimate"
-	ViewTitle     = "gooze: report"
+	RunTitle         = "gooze: run package"
+	EstimateTitle    = "gooze: estimate"
+	ViewTitle        = "gooze: report"
+	RunFunctionTitle = "gooze: run function"
 )
 
 // GoFileLenses returns the lenses shown at the top of a Go file. pathArg is the

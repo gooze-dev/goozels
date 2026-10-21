@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"cmp"
 	"context"
 	"encoding/json"
 	"path/filepath"
@@ -44,8 +43,17 @@ func (s *Server) handleCodeLens(msg *jsonrpc.Message) {
 func (s *Server) augmentCodeLens(req, resp *jsonrpc.Message) {
 	uri := uriOf(req.Params)
 	text, _ := s.store.Text(uri)
-	pattern := command.PackagePattern(s.getWorkdir(), lsp.URIPath(uri))
-	ours := lspCodeLenses(document.Lines(text), command.GoFileLenses(pattern))
+	path := lsp.URIPath(uri)
+	pattern := command.PackagePattern(s.getWorkdir(), path)
+
+	lenses := command.GoFileLenses(pattern)
+	// Function lenses need a gooze with --run, and only non-test files have
+	// code to mutate.
+	if s.goozeSupports("run") && !strings.HasSuffix(path, "_test.go") {
+		lenses = append(lenses, command.FuncLenses(text, pattern)...)
+	}
+
+	ours := lspCodeLenses(document.Lines(text), lenses)
 	resp.Result = mergeCodeLensResult(resp.Result, ours)
 	s.sendClient(resp)
 }
@@ -90,9 +98,7 @@ func (s *Server) handleExecuteCommand(msg *jsonrpc.Message) {
 // runGoozeCommand executes a gooze subcommand and reports progress to the editor.
 // It runs on its own goroutine so a long run never blocks the message pump.
 func (s *Server) runGoozeCommand(req *jsonrpc.Message, p lsp.ExecuteCommandParams) {
-	pattern := firstStringArg(p.Arguments)
-
-	args, ok := command.Args(p.Command, pattern)
+	args, ok := command.Args(p.Command, stringArgs(p.Arguments)...)
 	if !ok {
 		s.respondNull(req)
 		return
@@ -110,17 +116,18 @@ func (s *Server) runGoozeCommand(req *jsonrpc.Message, p lsp.ExecuteCommandParam
 
 	out, err := s.gooze.Run(ctx, s.getWorkdir(), args...)
 
-	s.reportGoozeResult(label, scoreScope(p.Command, pattern), out, err)
+	s.reportGoozeResult(label, scoreScope(p.Command, args), out, err)
 	s.respond(req, nil)
 }
 
-// scoreScope is the package pattern whose score a finished command reports:
-// the pattern a run tested, every package for the report view, and none for
-// an estimate, which changes no results.
-func scoreScope(id, pattern string) string {
+// scoreScope is the package pattern whose score a finished command reports,
+// from the gooze arguments it ran: the pattern a run tested (always last),
+// every package for the report view, and none for an estimate, which changes
+// no results.
+func scoreScope(id string, args []string) string {
 	switch id {
 	case command.Run:
-		return cmp.Or(pattern, "./...")
+		return args[len(args)-1]
 	case command.View:
 		return "./..."
 	default:
@@ -128,15 +135,21 @@ func scoreScope(id, pattern string) string {
 	}
 }
 
-// firstStringArg returns the first command argument when it is a non-empty
-// string (the package pattern code lenses pass), or "".
-func firstStringArg(rawArgs []json.RawMessage) string {
-	var a string
-	if len(rawArgs) > 0 && json.Unmarshal(rawArgs[0], &a) == nil {
-		return a
+// stringArgs returns the leading command arguments that are strings: the
+// package pattern code lenses pass, then a function lens's --run pattern.
+func stringArgs(rawArgs []json.RawMessage) []string {
+	var strs []string
+
+	for _, raw := range rawArgs {
+		var a string
+		if json.Unmarshal(raw, &a) != nil {
+			break
+		}
+
+		strs = append(strs, a)
 	}
 
-	return ""
+	return strs
 }
 
 // reportGoozeResult notifies the editor of a run's outcome, with the score of
