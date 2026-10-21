@@ -159,7 +159,7 @@ func TestReportDiagnosticsReadsWorkspaceReports(t *testing.T) {
 	s := NewServer(io.Discard, io.Discard, deps)
 	s.setWorkdir("/proj")
 
-	if fc := s.checker.Check("/proj", "/proj/x.go", "package x\n"); len(fc.Results) != 1 || !strings.Contains(fc.Results[0].Message, "score 100.00%") {
+	if fc := s.checker.Check("/proj", "/proj/x.go", "package x\n"); fc.Results == nil || len(fc.Results.Markers) != 0 || !strings.Contains(fc.Results.Summary.Message, "score 100.00%") {
 		t.Errorf("results = %+v, want one summary", fc.Results)
 	}
 	if fc := s.checker.Check("/proj", "/proj/y.go", "package y\n"); fc.Results != nil {

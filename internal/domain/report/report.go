@@ -27,17 +27,29 @@ type Current struct {
 	Rerun string
 }
 
-// Diagnostics returns the diagnostics gooze's reports yield for the Go file at
-// absPath, or nil when no report names it. The first is a top-of-file summary;
-// when the file or its tests changed since gooze ran, it says so instead and
-// gives the rerun command. Then comes one marker per line with surviving or
-// uncovered mutants, in line order. Markers of a changed file are kept only
-// where the line still reads as gooze tested it, so none points at the wrong
-// line.
-func Diagnostics(reports []rpt.Report, workdir, absPath string, cur Current) []model.Diagnostic {
+// Results is what gooze's reports say about one Go file.
+type Results struct {
+	// Summary is the top-of-file score or, when the file or its tests changed
+	// since gooze ran, a notice saying so with the rerun command.
+	Summary model.Diagnostic
+	// Markers mark each line with surviving or uncovered mutants, in line
+	// order.
+	Markers []model.Diagnostic
+}
+
+// All returns the summary followed by the markers.
+func (r Results) All() []model.Diagnostic {
+	return append([]model.Diagnostic{r.Summary}, r.Markers...)
+}
+
+// FileResults returns the results gooze's reports give for the Go file at
+// absPath, and false when no report names it. Markers of a changed file are
+// kept only where the line still reads as gooze tested it, so none points at
+// the wrong line.
+func FileResults(reports []rpt.Report, workdir, absPath string, cur Current) (Results, bool) {
 	rep := ForFile(reports, workdir, absPath)
 	if len(rep) == 0 {
-		return nil
+		return Results{}, false
 	}
 
 	hash := hashOf(cur.Text)
@@ -46,12 +58,7 @@ func Diagnostics(reports []rpt.Report, workdir, absPath string, cur Current) []m
 		return sourceFresh(r, hash) || (c.line < len(lines) && lines[c.line] == c.text)
 	}
 
-	survivors := survivorDiagnostics(rep, keep)
-	// Equivalent: only the slice's initial capacity changes.
-	diags := make([]model.Diagnostic, 0, len(survivors)+1) //gooze:ignore arithmetic,numbers
-	diags = append(diags, headDiagnostic(rep, workdir, absPath, cur))
-
-	return append(diags, survivors...)
+	return Results{Summary: headDiagnostic(rep, workdir, absPath, cur), Markers: survivorDiagnostics(rep, keep)}, true
 }
 
 // headDiagnostic is the summary, or the stale notice when the source or its

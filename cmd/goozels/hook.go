@@ -165,8 +165,10 @@ func digest(e *entry) string {
 
 	b.WriteString(e.note)
 
-	for _, d := range e.check.Results {
-		b.WriteString("\n" + formatDiagnostic(e.shown, d))
+	if e.check.Results != nil {
+		for _, d := range e.check.Results.All() {
+			b.WriteString("\n" + formatDiagnostic(e.shown, d))
+		}
 	}
 
 	// Equivalent: Builder.Len is never negative, so <= 0 is == 0.

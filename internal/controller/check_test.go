@@ -81,13 +81,13 @@ func TestCheckerTestChanged(t *testing.T) {
 
 	fc := c.Check("/w", "/w/pkg/x.go", src)
 	want := "gooze: tests changed since the last run (x_test.go); score then 100.00%; rerun: cd .. && gooze run ./pkg"
-	if len(fc.Results) != 1 || fc.Results[0].Message != want {
+	if fc.Results == nil || len(fc.Results.Markers) != 0 || fc.Results.Summary.Message != want {
 		t.Errorf("results = %+v, want %q", fc.Results, want)
 	}
 
 	c.Files = nil
-	if fc := c.Check("/w", "/w/pkg/x.go", src); fc.Results[0].Message != "gooze: score 100.00% — 0 killed" {
-		t.Errorf("without a file reader tests are not compared; got %q", fc.Results[0].Message)
+	if fc := c.Check("/w", "/w/pkg/x.go", src); fc.Results.Summary.Message != "gooze: score 100.00% — 0 killed" {
+		t.Errorf("without a file reader tests are not compared; got %q", fc.Results.Summary.Message)
 	}
 }
 

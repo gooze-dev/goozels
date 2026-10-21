@@ -53,14 +53,12 @@ func survivorDiagnostics(reports []rpt.Report, keep func(rpt.Report, change) boo
 // reportMutants lists the changed lines of one report for each of its
 // surviving or uncovered mutations.
 func reportMutants(r rpt.Report) []mutant {
-	if r.Diff == nil {
+	changes := reportChanges(r)
+	if changes == nil {
 		return nil
 	}
 
-	var (
-		mutants []mutant
-		changes = diffChanges(string(*r.Diff))
-	)
+	var mutants []mutant
 
 	for _, res := range r.Result {
 		for _, mu := range res.Mutations {
@@ -76,6 +74,16 @@ func reportMutants(r rpt.Report) []mutant {
 	}
 
 	return mutants
+}
+
+// reportChanges returns the lines a report's mutations changed, which is
+// where its markers go. A report without a diff has none.
+func reportChanges(r rpt.Report) []change {
+	if r.Diff == nil {
+		return nil
+	}
+
+	return diffChanges(string(*r.Diff))
 }
 
 // lineDiagnostic marks one line for the mutants that changed it.

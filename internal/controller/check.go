@@ -40,9 +40,9 @@ type FileCheck struct {
 	// directives in Go files, or a gooze config file's settings.
 	Edit []model.Diagnostic
 	// Results holds what gooze's reports say about a Go file: a summary (or
-	// a notice that they are out of date) first, then survivor markers in
-	// line order. It is nil when gooze has no results for the file.
-	Results []model.Diagnostic
+	// a notice that they are out of date) and survivor markers. It is nil
+	// when gooze has no results for the file.
+	Results *report.Results
 	// Package is the gooze path pattern of a Go file's package, relative to
 	// the workdir, e.g. "./calc".
 	Package string
@@ -57,7 +57,12 @@ type FileCheck struct {
 // Diagnostics returns every diagnostic of the check in line order, the
 // results' summary first.
 func (f FileCheck) Diagnostics() []model.Diagnostic {
-	all := slices.Concat(f.Results, f.Edit)
+	var results []model.Diagnostic
+	if f.Results != nil {
+		results = f.Results.All()
+	}
+
+	all := slices.Concat(results, f.Edit)
 	slices.SortStableFunc(all, func(a, b model.Diagnostic) int {
 		return cmp.Compare(a.Range.Start.Line, b.Range.Start.Line)
 	})
@@ -109,9 +114,9 @@ func (c Checker) SourcesForTest(workdir, absPath string) []string {
 	return report.SourcesForTest(all, workdir, absPath)
 }
 
-// results returns the report-derived diagnostics of a .go file from all the
-// reports of workdir, or nil when none is about it.
-func (c Checker) results(all []goozereport.Report, workdir, absPath, text, rerun string) []model.Diagnostic {
+// results returns what the reports of workdir say about a .go file, or nil
+// when none is about it.
+func (c Checker) results(all []goozereport.Report, workdir, absPath, text, rerun string) *report.Results {
 	cur := report.Current{Text: text, Rerun: rerun}
 
 	if c.Files != nil {
@@ -124,7 +129,12 @@ func (c Checker) results(all []goozereport.Report, workdir, absPath, text, rerun
 		}
 	}
 
-	return report.Diagnostics(all, workdir, absPath, cur)
+	results, ok := report.FileResults(all, workdir, absPath, cur)
+	if !ok {
+		return nil
+	}
+
+	return &results
 }
 
 // rerun is the command that reruns gooze for a pattern from c.Cwd.
