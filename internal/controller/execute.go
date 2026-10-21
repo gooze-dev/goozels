@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -118,7 +119,7 @@ func (s *Server) runGoozeCommand(req *jsonrpc.Message, p lsp.ExecuteCommandParam
 
 	s.reportGoozeResult(label, scoreScope(p.Command, args), out, err)
 
-	if p.Command == command.RunFunction && err == nil {
+	if p.Command == command.RunFunction && (err == nil || errors.Is(err, command.ErrBelowThreshold)) {
 		s.offerMerge(args)
 	}
 
@@ -159,11 +160,22 @@ func stringArgs(rawArgs []json.RawMessage) []string {
 
 // reportGoozeResult notifies the editor of a run's outcome, with the score of
 // the packages scope selects, and on success refreshes report-derived
-// diagnostics so a fresh report shows up. The output is logged, capped at
-// maxLogBytes.
+// diagnostics so a fresh report shows up. A run below a gooze.yaml threshold
+// wrote its reports too: it is a warning naming the low scores. The output is
+// logged, capped at maxLogBytes.
 func (s *Server) reportGoozeResult(label, scope, out string, err error) {
 	if out != "" {
 		s.notify("window/logMessage", lsp.ShowMessageParams{Type: lsp.MessageLog, Message: capLog(label, out)})
+	}
+
+	if errors.Is(err, command.ErrBelowThreshold) {
+		s.notify("window/showMessage", lsp.ShowMessageParams{
+			Type:    lsp.MessageWarn,
+			Message: label + " finished below a threshold: " + breachesOf(out),
+		})
+		s.refreshReports()
+
+		return
 	}
 
 	if err != nil {
@@ -182,6 +194,25 @@ func (s *Server) reportGoozeResult(label, scope, out string, err error) {
 
 	s.notify("window/showMessage", lsp.ShowMessageParams{Type: lsp.MessageInfo, Message: msg})
 	s.refreshReports()
+}
+
+// breachesOf returns the scores below a threshold that gooze printed after
+// "Error: ", one per line, joined with "; ".
+func breachesOf(out string) string {
+	_, after, ok := strings.Cut(out, "Error: ")
+	if !ok {
+		return ""
+	}
+
+	var lines []string
+
+	for line := range strings.Lines(after) {
+		if line = strings.TrimSpace(line); line != "" {
+			lines = append(lines, line)
+		}
+	}
+
+	return strings.Join(lines, "; ")
 }
 
 // score summarizes the reports of the packages a pattern selects, or returns

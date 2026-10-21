@@ -250,6 +250,37 @@ func TestDiagnoseIntegerBounds(t *testing.T) {
 	}
 }
 
+func TestDiagnoseThresholds(t *testing.T) {
+	cases := []struct {
+		yaml, want string
+		line       int
+	}{
+		{"threshold:\n  total: 100.5\n", `invalid value for "threshold.total": 100.5 is out of range: must be between 0 and 100`, 1},
+		{"threshold:\n  diff:\n    file: -1\n", `invalid value for "threshold.diff.file": -1 is out of range: must be between 0 and 100`, 2},
+		{"threshold:\n  average: high\n", `invalid value for "threshold.average": expected a number`, 1},
+	}
+	for _, c := range cases {
+		diags := newEditor().Diagnose(c.yaml)
+		if len(diags) != 1 || diags[0].Message != c.want || diags[0].Range.Start.Line != c.line || diags[0].Severity != model.SeverityError {
+			t.Errorf("Diagnose(%q) = %+v, want one error %q on line %d", c.yaml, diags, c.want, c.line)
+		}
+	}
+
+	valid := "threshold:\n  total: 80\n  average: 87.5\n  file: 0\n  diff:\n    total: 100\n"
+	if diags := newEditor().Diagnose(valid); len(diags) != 0 {
+		t.Errorf("percents should be accepted, got %+v", diags)
+	}
+
+	items := newEditor().Complete("threshold:\n  ", 1, 2)
+	var names []string
+	for _, item := range items {
+		names = append(names, item.Label+" "+item.Detail)
+	}
+	if !slices.Contains(names, "total float") || !slices.Contains(names, "diff object") {
+		t.Errorf("threshold completions = %v, want total (float) and diff (object)", names)
+	}
+}
+
 func TestNewerGoozeKeysAreKnown(t *testing.T) {
 	text := "no-update-check: true\nrun:\n  diff: origin/main\n  mutagens: [comparison]\n"
 	if diags := newEditor().Diagnose(text); len(diags) != 0 {
@@ -395,6 +426,7 @@ func TestKindLabel(t *testing.T) {
 		"list without values": {config.Field{Kind: config.KindStringList}, "string list"},
 		"string with values":  {config.Field{Kind: config.KindString, Enum: []string{"a"}}, "string"},
 		"int":                 {config.Field{Kind: config.KindInt}, "int"},
+		"float":               {config.Field{Kind: config.KindFloat}, "float"},
 	}
 
 	for name, c := range cases {

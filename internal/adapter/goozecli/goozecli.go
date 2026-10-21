@@ -4,8 +4,12 @@ package goozecli
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os/exec"
 	"regexp"
+
+	"gooze.dev/pkg/goozels/internal/domain/command"
 )
 
 // Runner executes the gooze binary.
@@ -23,14 +27,24 @@ func New(path string) Runner {
 	return Runner{Path: path}
 }
 
+// belowThresholdExit is gooze's exit code for a run, view or merge that
+// completed with a score below a threshold.
+const belowThresholdExit = 3
+
 // Run executes gooze with args in dir and returns its combined output. A non-nil
-// error means a non-zero exit (output still holds whatever was printed).
+// error means a non-zero exit (output still holds whatever was printed); exit
+// code 3 is command.ErrBelowThreshold.
 func (r Runner) Run(ctx context.Context, dir string, args ...string) (string, error) {
 	// The gooze path and args are operator-controlled (flags/env/commands), not
 	// arbitrary user input.
 	cmd := exec.CommandContext(ctx, r.Path, args...) //nolint:gosec
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
+
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && exitErr.ExitCode() == belowThresholdExit {
+		err = fmt.Errorf("%w (%w)", command.ErrBelowThreshold, err)
+	}
 
 	return string(out), err
 }

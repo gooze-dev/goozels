@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -470,5 +471,59 @@ func TestScoreWithoutScopeIgnoresRootReports(t *testing.T) {
 	s.setWorkdir("/w")
 	if got := s.score(""); got != "" {
 		t.Errorf("score(\"\") = %q, want empty even with reports in the root package", got)
+	}
+}
+
+// belowThresholdGooze is a GoozeRunner whose runs finish below a threshold
+// set in gooze.yaml, printing what gooze does.
+type belowThresholdGooze struct{}
+
+const belowThresholdOutput = "Mutation score: 50.00% (1 killed, 1 survived)\n" +
+	"Error: mutation score 50.00% is below threshold.total 90%\ncalc/calc.go: score 50.00% is below threshold.file 90%\n"
+
+func (belowThresholdGooze) Run(context.Context, string, ...string) (string, error) {
+	return belowThresholdOutput, fmt.Errorf("%w (exit status 3)", command.ErrBelowThreshold)
+}
+
+func (belowThresholdGooze) RunFlags(context.Context) (map[string]bool, error) { return nil, nil }
+
+func TestReportGoozeResultBelowAThreshold(t *testing.T) {
+	var client bytes.Buffer
+	deps := productionDeps("gooze")
+	deps.Gooze = belowThresholdGooze{}
+	s := NewServer(&client, io.Discard, deps)
+
+	s.runGoozeCommand(&jsonrpc.Message{ID: json.RawMessage("1")}, lsp.ExecuteCommandParams{Command: "gooze.run"})
+
+	var shown []lsp.ShowMessageParams
+	r := jsonrpc.NewReader(bytes.NewReader(client.Bytes()))
+	for {
+		msg, err := r.Read()
+		if err != nil {
+			break
+		}
+		var p lsp.ShowMessageParams
+		if msg.Method == "window/showMessage" && json.Unmarshal(msg.Params, &p) == nil {
+			shown = append(shown, p)
+		}
+	}
+
+	want := "gooze run ./... finished below a threshold: mutation score 50.00% is below threshold.total 90%; calc/calc.go: score 50.00% is below threshold.file 90%"
+	if len(shown) != 2 || shown[1].Type != lsp.MessageWarn || shown[1].Message != want {
+		t.Errorf("showMessage = %+v, want a warning %q", shown, want)
+	}
+}
+
+func TestBreachesOf(t *testing.T) {
+	cases := map[string]string{
+		belowThresholdOutput: "mutation score 50.00% is below threshold.total 90%; calc/calc.go: score 50.00% is below threshold.file 90%",
+		"Error: one\n\n":     "one",
+		"no error line\n":    "",
+		"":                   "",
+	}
+	for out, want := range cases {
+		if got := breachesOf(out); got != want {
+			t.Errorf("breachesOf(%q) = %q, want %q", out, got, want)
+		}
 	}
 }
