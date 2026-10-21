@@ -6,11 +6,15 @@ import (
 	"testing"
 
 	"gooze.dev/pkg/gooze/pkg/config"
+	"gooze.dev/pkg/gooze/pkg/mutagen"
 
 	"gooze.dev/pkg/goozels/internal/model"
 )
 
 func newEditor() Editor { return New(config.NewRegistry()) }
+
+// allMutagens lists every mutagen gooze has, as run.mutagens accepts them.
+var allMutagens = strings.Join(mutagen.Names(), ", ")
 
 func TestCompleteTopLevel(t *testing.T) {
 	items := newEditor().Complete("ou", 0, 2)
@@ -303,14 +307,15 @@ func TestDiagnoseListItems(t *testing.T) {
 		want string // "" for valid
 	}{
 		"flow list ok":             {"run:\n  mutagens: [" + valid + "]\n", ""},
-		"flow list unknown":        {"run:\n  mutagens: [comparison, bogus]\n", `invalid value for "run.mutagens": unknown item "bogus"; expected one of: arithmetic, boolean, numbers, comparison, logical, unary`},
+		"flow list unknown":        {"run:\n  mutagens: [comparison, bogus]\n", `invalid value for "run.mutagens": unknown item "bogus"; expected one of: `+allMutagens},
 		"flow list quoted":         {"run:\n  mutagens: [\"comparison\", 'unary']\n", ""},
 		"single value":             {"run:\n  mutagens: comparison\n", ""},
-		"single value bad":         {"run:\n  mutagens: statement\n", `invalid value for "run.mutagens": unknown item "statement"; expected one of: arithmetic, boolean, numbers, comparison, logical, unary`},
+		"single value bad":         {"run:\n  mutagens: bogus\n", `invalid value for "run.mutagens": unknown item "bogus"; expected one of: `+allMutagens},
+		"off by default":           {"run:\n  mutagens: statement\n", ""},
 		"empty flow list":          {"run:\n  mutagens: []\n", ""},
 		"block list ok":            {"run:\n  mutagens:\n    - comparison\n    - logical # why\n", ""},
-		"block list unknown":       {"run:\n  mutagens:\n    - comparison\n    - bogus\n", `invalid value for "run.mutagens": unknown item "bogus"; expected one of: arithmetic, boolean, numbers, comparison, logical, unary`},
-		"block list at key indent": {"run:\n  mutagens:\n  - bogus\n", `invalid value for "run.mutagens": unknown item "bogus"; expected one of: arithmetic, boolean, numbers, comparison, logical, unary`},
+		"block list unknown":       {"run:\n  mutagens:\n    - comparison\n    - bogus\n", `invalid value for "run.mutagens": unknown item "bogus"; expected one of: `+allMutagens},
+		"block list at key indent": {"run:\n  mutagens:\n  - bogus\n", `invalid value for "run.mutagens": unknown item "bogus"; expected one of: `+allMutagens},
 		"other lists unchecked":    {"paths:\n  exclude:\n    - anything\n  exclude2: x\n", `unknown gooze config key "paths.exclude2"`},
 	}
 
@@ -348,8 +353,8 @@ func TestCompleteListItem(t *testing.T) {
 	}
 
 	all := newEditor().Complete("run:\n  mutagens:\n    - ", 2, 6)
-	if len(all) != 6 {
-		t.Errorf("an empty item offers all six mutagens, got %v", labels(all))
+	if len(all) != len(mutagen.All()) {
+		t.Errorf("an empty item offers every mutagen, got %v", labels(all))
 	}
 
 	if got := newEditor().Complete("paths:\n  exclude:\n    - ", 2, 6); len(got) != 0 {
@@ -359,7 +364,7 @@ func TestCompleteListItem(t *testing.T) {
 
 func TestKindLabelOfAListWithValues(t *testing.T) {
 	items := newEditor().Complete("run:\n  mutag", 1, 7)
-	if len(items) != 1 || items[0].Detail != "list: arithmetic|boolean|numbers|comparison|logical|unary" {
+	if len(items) != 1 || items[0].Detail != "list: "+strings.Join(mutagen.Names(), "|") {
 		t.Errorf("completion detail = %+v", items)
 	}
 }
@@ -444,7 +449,7 @@ func TestDiagnoseIgnoresBlankAndCommentLines(t *testing.T) {
 }
 
 func TestCompleteBareDash(t *testing.T) {
-	if got := newEditor().Complete("run:\n  mutagens:\n    -", 2, 5); len(got) != 6 {
+	if got := newEditor().Complete("run:\n  mutagens:\n    -", 2, 5); len(got) != len(mutagen.All()) {
 		t.Errorf("a bare dash starts an item, got %v", labels(got))
 	}
 }

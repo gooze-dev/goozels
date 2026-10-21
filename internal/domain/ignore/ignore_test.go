@@ -3,6 +3,8 @@ package ignore
 import (
 	"strings"
 	"testing"
+
+	"gooze.dev/pkg/gooze/pkg/mutagen"
 )
 
 func TestComplete(t *testing.T) {
@@ -61,7 +63,7 @@ func TestDiagnoseUnknownMutagen(t *testing.T) {
 func TestCompleteAfterTrailingSpace(t *testing.T) {
 	line := "y := x * 2 //gooze:ignore "
 	items := Complete(line, len(line))
-	if len(items) != 9 {
+	if len(items) != len(mutagen.All()) {
 		t.Fatalf("expected every mutagen after a trailing space, got %d", len(items))
 	}
 	if items[0].ReplaceStart != len(line) || items[0].ReplaceEnd != len(line) {

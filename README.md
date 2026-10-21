@@ -52,7 +52,8 @@ keep **all** your normal Go features and simply get gooze ones on top.
   `[`) are flagged as you type.
 
 The mutagens you can reference in `//gooze:ignore` are: `arithmetic`, `boolean`,
-`numbers`, `comparison`, `logical`, `unary`, `branch`, `statement`, `loop`.
+`numbers`, `comparison`, `logical`, `unary`, `bitwise`, `increment`,
+`assignment`, `branch`, `statement`, `loop`.
 An empty `//gooze:ignore` skips them all.
 
 ---
