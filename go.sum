@@ -12,8 +12,8 @@ github.com/stretchr/testify v1.12.1 h1:EuwCh5fleGS7H32xRwO3wRGT7DxrDhLAT6FF8MpWD
 github.com/stretchr/testify v1.12.1/go.mod h1:MDEgiDPPsNp5cuIrHPPCyornHKgEVbtFUmoNlxoYthg=
 go.yaml.in/yaml/v3 v3.0.5 h1:N6y/pJk8buWs9NY5ERU2HSMfm+IuD/OtfdAnq6kESPw=
 go.yaml.in/yaml/v3 v3.0.5/go.mod h1:HVTZu1O7/Vkt2N+BFy8Zza+lnLsABggaTM2ZpNIGuKg=
-gooze.dev/pkg/gooze v1.2.1-0.20261021175244-fa33ffa70c71 h1:YL2FdkG1as7xAQk6741Tt8mYqB8ILJ0CIPu/jUURTsE=
-gooze.dev/pkg/gooze v1.2.1-0.20261021175244-fa33ffa70c71/go.mod h1:8jlAuHn5YEvrRS1qnLRYnlvuEmk4axIYq8l7udaC9WU=
+gooze.dev/pkg/gooze v1.2.1-0.20261021183128-f509560269dd h1:dxcREzVESKtPoWPYzveMQum7js6D8YiwcKV5QrLCFEA=
+gooze.dev/pkg/gooze v1.2.1-0.20261021183128-f509560269dd/go.mod h1:8jlAuHn5YEvrRS1qnLRYnlvuEmk4axIYq8l7udaC9WU=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
 gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15 h1:YR8cESwS4TdDjEe65xsg0ogRM/Nc3DYOhEAlW+xobZo=
 gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
