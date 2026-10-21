@@ -18,6 +18,11 @@ func (s *Server) handleClient(msg *jsonrpc.Message) {
 	case msg.IsNotification():
 		s.handleClientNotification(msg)
 	case msg.IsResponse():
+		if fn, ok := s.takeClientRequest(msg.IDKey()); ok {
+			fn(msg)
+			return
+		}
+
 		// Response to a gopls-originated request (e.g. workspace/configuration).
 		s.sendGopls(msg)
 	}

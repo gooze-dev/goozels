@@ -8,19 +8,19 @@ import (
 	"gooze.dev/pkg/goozels/internal/adapter/hookstate"
 )
 
-type charCase struct{ name, stdout, stderr string }
+type outputCase struct{ name, stdout, stderr string }
 
-// charCases runs goozels check and the hook on the testdata project the ways
+// outputCases runs goozels check and the hook on the testdata project the ways
 // their output varies: a source, a capped source, a test file, a stale source,
 // and the hook's first and repeated reply.
-func charCases(t *testing.T) []charCase {
+func outputCases(t *testing.T) []outputCase {
 	t.Helper()
 
-	var cases []charCase
+	var cases []outputCase
 
 	run := func(name string, args ...string) {
 		_, out, notes := check(t, args...)
-		cases = append(cases, charCase{name, out, notes})
+		cases = append(cases, outputCase{name, out, notes})
 	}
 
 	// Run from inside each project, so paths print relative and stay the same.
@@ -36,7 +36,7 @@ func charCases(t *testing.T) []charCase {
 
 	state := hookstate.New(t.TempDir())
 	hook := func(name string) {
-		cases = append(cases, charCase{name, hookContext(t, "claude", hookPayload(t, "s", dir, src), state), ""})
+		cases = append(cases, outputCase{name, hookContext(t, "claude", hookPayload(t, "s", dir, src), state), ""})
 	}
 	hook("hook first")
 	hook("hook again")
@@ -55,9 +55,8 @@ func charCases(t *testing.T) []charCase {
 	return cases
 }
 
-// TestOutputCharacterization pins goozels check and hook output byte for byte,
-// so refactoring how results are assembled cannot change what users see.
-func TestOutputCharacterization(t *testing.T) {
+// TestOutput pins goozels check and hook output byte for byte.
+func TestOutput(t *testing.T) {
 	const (
 		summary = "calc/calc.go:1:1: warning: gooze: score 43.75% — 7 killed, 3 survived, 6 not covered by any test"
 		line11  = "calc/calc.go:11:2: warning: gooze: 3 surviving mutants (comparison ×2, numbers) — tests still pass with `return n > 0` → `return n != 0`, `return n >= 0`, `return n > 1`"
@@ -74,7 +73,7 @@ func TestOutputCharacterization(t *testing.T) {
 		"stale source": "calc/calc.go:1:1: warning: gooze: results are from before calc.go changed; score then 43.75%; rerun: gooze run ./calc\n" + line11 + "\n" + line16 + "\n",
 	}
 
-	for _, c := range charCases(t) {
+	for _, c := range outputCases(t) {
 		if c.stdout != want[c.name] {
 			t.Errorf("%s: output changed:\n%s\nwant:\n%s", c.name, c.stdout, want[c.name])
 		}

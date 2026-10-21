@@ -114,3 +114,15 @@ func GoFileLenses(pathArg string) []model.CodeLens {
 		{Range: top, Command: model.Command{Title: ViewTitle, Command: View}},
 	}
 }
+
+// MergeTitle is the button that folds a function run's reports into the main
+// reports.
+const MergeTitle = "Merge into reports"
+
+// RunReportsDir is where a narrowed gooze run (a function run among them)
+// leaves its reports, inside the reports directory, until they are merged.
+const RunReportsDir = "run"
+
+// MergeArgs are the gooze CLI arguments that fold the run directory (and any
+// shards) into the main reports.
+func MergeArgs() []string { return []string{"report", "merge"} }

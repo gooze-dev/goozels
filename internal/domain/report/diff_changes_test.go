@@ -8,9 +8,9 @@ import (
 	rpt "gooze.dev/pkg/gooze/pkg/report"
 )
 
-// TestDiffChangesCharacterization pins the exact changes read from diffs, so
-// swapping the parser behind diffChanges cannot move a marker.
-func TestDiffChangesCharacterization(t *testing.T) {
+// TestDiffChangesExact pins the changes (line, columns, texts) read from
+// common and edge-case diffs, which decide where markers go.
+func TestDiffChangesExact(t *testing.T) {
 	cases := map[string]struct {
 		diff string
 		want []change
@@ -49,9 +49,9 @@ func TestDiffChangesCharacterization(t *testing.T) {
 	}
 }
 
-// TestDiffChangesCharacterizationOfTestdata pins the changes of every report
-// in testdata/reports.
-func TestDiffChangesCharacterizationOfTestdata(t *testing.T) {
+// TestDiffChangesOfTestdata pins the changes of every report in
+// testdata/reports.
+func TestDiffChangesOfTestdata(t *testing.T) {
 	want := map[string][]change{
 		"1ec5fe8dcb0fe411.yaml": {{line: 15, indent: 1, end: 13, text: "\treturn n * 2", mutated: "return n - 2"}},
 		"24cbb4468032c589.yaml": {{line: 15, indent: 1, end: 13, text: "\treturn n * 2", mutated: "return n * 1"}},

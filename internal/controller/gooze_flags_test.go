@@ -13,7 +13,13 @@ import (
 	"testing"
 	"time"
 
+	"path/filepath"
+
+	"gooze.dev/pkg/gooze/pkg/config"
+
 	"gooze.dev/pkg/goozels/internal/domain/command"
+	"gooze.dev/pkg/goozels/pkg/jsonrpc"
+	"gooze.dev/pkg/goozels/pkg/lsp"
 )
 
 // flagGooze is a GoozeRunner whose `run --help` lists flags, or fails.
@@ -218,5 +224,206 @@ func TestExecuteRunFunctionPassesThePattern(t *testing.T) {
 
 	if len(runs) == 0 || strings.Join(runs[0], " ") != "run --run ^Add$ ./calc" {
 		t.Errorf("gooze runs = %q", runs)
+	}
+}
+
+// awaitRequest drains client-bound messages until the server sends a request
+// with method.
+func (h *harness) awaitRequest(t *testing.T, method string) *jsonrpc.Message {
+	t.Helper()
+
+	deadline := time.After(3 * time.Second)
+
+	for {
+		select {
+		case msg := <-h.inbox:
+			if msg.IsRequest() && msg.Method == method {
+				return msg
+			}
+		case <-deadline:
+			t.Fatalf("timed out waiting for request %s", method)
+			return nil
+		}
+	}
+}
+
+// answer replies to a server request as the editor would.
+func (h *harness) answer(t *testing.T, req *jsonrpc.Message, result any) {
+	t.Helper()
+
+	raw, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := h.clientW.Write(&jsonrpc.Message{JSONRPC: "2.0", ID: req.ID, Result: raw}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// functionRunSession runs gooze.runFunction in a copy of testdata whose last
+// narrowed run left reports in .gooze-reports/run.
+func functionRunSession(t *testing.T, gooze GoozeRunner) *harness {
+	t.Helper()
+
+	dir := projectCopy(t)
+	copyReports(t, filepath.Join(dir, config.DefaultReportsDir, "run"))
+
+	deps := productionDeps("gooze")
+	deps.Gooze = gooze
+	h := newHarnessWithDeps(t, goplsResponder, deps)
+
+	h.send(t, "initialize", "1", map[string]any{"rootUri": "file://" + dir, "capabilities": map[string]any{}})
+	h.awaitResponse(t, "1")
+	// The offer can reach the client before the command's own response, so
+	// callers wait for what they expect instead of draining up to it.
+	h.send(t, "workspace/executeCommand", "5", map[string]any{"command": command.RunFunction, "arguments": []any{"./calc", "^Add$"}})
+
+	return h
+}
+
+func TestRunFunctionOffersAMerge(t *testing.T) {
+	var (
+		mu   sync.Mutex
+		runs [][]string
+	)
+
+	h := functionRunSession(t, argsGooze{mu: &mu, runs: &runs})
+
+	req := h.awaitRequest(t, "window/showMessageRequest")
+
+	var p lsp.ShowMessageRequestParams
+	if err := json.Unmarshal(req.Params, &p); err != nil {
+		t.Fatal(err)
+	}
+
+	wantMsg := "gooze: function run done — score 43.75% — 7 killed, 3 survived, 6 not covered by any test. Its reports are in .gooze-reports/run until you merge them into the main reports."
+	if p.Type != lsp.MessageInfo || p.Message != wantMsg || len(p.Actions) != 1 || p.Actions[0].Title != command.MergeTitle {
+		t.Errorf("request = %+v\nwant message %q and one %q action", p, wantMsg, command.MergeTitle)
+	}
+
+	h.answer(t, req, lsp.MessageActionItem{Title: command.MergeTitle})
+
+	shown := h.awaitNotification(t, "window/showMessage")
+	for !strings.Contains(string(shown.Params), "gooze report merge") {
+		shown = h.awaitNotification(t, "window/showMessage")
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	if len(runs) != 2 || strings.Join(runs[1], " ") != "report merge" {
+		t.Errorf("gooze runs = %q, want the function run then report merge", runs)
+	}
+}
+
+func TestRunFunctionMergeDeclined(t *testing.T) {
+	var (
+		mu   sync.Mutex
+		runs [][]string
+	)
+
+	h := functionRunSession(t, argsGooze{mu: &mu, runs: &runs})
+	h.answer(t, h.awaitRequest(t, "window/showMessageRequest"), nil)
+
+	time.Sleep(100 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	if len(runs) != 1 {
+		t.Errorf("a dismissed request must not merge; gooze runs = %q", runs)
+	}
+}
+
+func TestRunFunctionFailedOffersNoMerge(t *testing.T) {
+	h := functionRunSession(t, failingGooze{})
+
+	deadline := time.After(200 * time.Millisecond)
+	for {
+		select {
+		case msg := <-h.inbox:
+			if msg.Method == "window/showMessageRequest" {
+				t.Fatalf("a failed run must not offer a merge: %s", msg.Params)
+			}
+		case <-deadline:
+			return
+		}
+	}
+}
+
+func TestOtherClientResponsesStillReachGopls(t *testing.T) {
+	h := newHarness(t, goplsResponder)
+
+	if err := h.clientW.Write(&jsonrpc.Message{JSONRPC: "2.0", ID: json.RawMessage("42"), Result: json.RawMessage("null")}); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case msg := <-h.goplsSeen:
+		if msg.IDKey() != "42" {
+			t.Errorf("gopls got %+v", msg)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("a response to a gopls request was not forwarded")
+	}
+}
+
+func TestOnlyFunctionRunsOfferAMerge(t *testing.T) {
+	for _, id := range []string{command.Run, command.View, command.Estimate} {
+		var (
+			mu   sync.Mutex
+			runs [][]string
+		)
+
+		deps := productionDeps("gooze")
+		deps.Gooze = argsGooze{mu: &mu, runs: &runs}
+		h := newHarnessWithDeps(t, goplsResponder, deps)
+
+		h.send(t, "workspace/executeCommand", "5", map[string]any{"command": id, "arguments": []any{"./calc"}})
+
+		// Check every message, not just those after the response: an offer
+		// would be sent before it.
+		responded, deadline := false, time.After(3*time.Second)
+
+	drain:
+		for {
+			select {
+			case msg := <-h.inbox:
+				if msg.Method == "window/showMessageRequest" {
+					t.Errorf("%s offered a merge: %s", id, msg.Params)
+				}
+
+				if msg.IsResponse() && msg.IDKey() == "5" && !responded {
+					responded, deadline = true, time.After(100*time.Millisecond)
+				}
+			case <-deadline:
+				break drain
+			}
+		}
+
+		if !responded {
+			t.Errorf("%s got no response", id)
+		}
+	}
+}
+
+func TestRunFunctionMergeNeedsTheMergeButton(t *testing.T) {
+	var (
+		mu   sync.Mutex
+		runs [][]string
+	)
+
+	h := functionRunSession(t, argsGooze{mu: &mu, runs: &runs})
+	// Any other title, sorting before or after the merge button's, merges nothing.
+	h.answer(t, h.awaitRequest(t, "window/showMessageRequest"), lsp.MessageActionItem{Title: "Not now"})
+
+	time.Sleep(100 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	if len(runs) != 1 {
+		t.Errorf("gooze runs = %q, want only the function run", runs)
 	}
 }
