@@ -62,26 +62,46 @@ func FileResults(reports []rpt.Report, workdir, absPath string, cur Current) (Re
 }
 
 // headDiagnostic is the summary, or the stale notice when the source or its
-// tests changed since the run.
+// tests changed since the run. Either says when the reports cover only part of
+// the file, so a narrowed run's score is not read as the whole file's.
 func headDiagnostic(rep []rpt.Report, workdir, absPath string, cur Current) model.Diagnostic {
 	d := SummaryDiagnostic(rep)
+	partial, isPartial := partlyTested(rep)
 
 	switch state, changed := freshness(rep, workdir, absPath, cur); state {
 	case SourceChanged:
-		d.Message = staleMessage("results are from before "+filepath.Base(absPath)+" changed", rep, cur.Rerun)
+		d.Message = staleMessage(partial, "results are from before "+filepath.Base(absPath)+" changed", rep, cur.Rerun)
 		d.Severity = model.SeverityWarning
 	case TestChanged:
-		d.Message = staleMessage("tests changed since the last run ("+filepath.Base(changed)+")", rep, cur.Rerun)
+		d.Message = staleMessage(partial, "tests changed since the last run ("+filepath.Base(changed)+")", rep, cur.Rerun)
 		d.Severity = model.SeverityWarning
 	case Fresh:
+		if isPartial {
+			d.Message = partialMessage(partial, rep, cur.Rerun)
+		}
 	}
 
 	return d
 }
 
+// partialMessage is the summary of a partly tested file, with the command
+// that tests all of it.
+func partialMessage(partial string, rep []rpt.Report, rerun string) string {
+	msg := "gooze: " + partial + " — " + ScoreText(Summarize(rep))
+	if rerun != "" {
+		msg += "; rerun the whole file: " + rerun
+	}
+
+	return msg
+}
+
 // staleMessage says why results may be out of date, the score they gave and
-// how to refresh them.
-func staleMessage(why string, rep []rpt.Report, rerun string) string {
+// how to refresh them, after partial's label when the file is partly tested.
+func staleMessage(partial, why string, rep []rpt.Report, rerun string) string {
+	if partial != "" {
+		why = partial + "; " + why
+	}
+
 	msg := "gooze: " + why + "; score then " + percent(Summarize(rep))
 	if rerun != "" {
 		msg += "; rerun: " + rerun
