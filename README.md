@@ -2,6 +2,12 @@
 
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/gooze-dev/goozels/badge)](https://scorecard.dev/viewer/?uri=github.com/gooze-dev/goozels)
 [![codecov](https://codecov.io/gh/gooze-dev/goozels/graph/badge.svg)](https://app.codecov.io/gh/gooze-dev/goozels)
+[![Go Report Card](https://goreportcard.com/badge/github.com/gooze-dev/goozels)](https://goreportcard.com/report/github.com/gooze-dev/goozels)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=gooze-dev_goozels&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=gooze-dev_goozels)
+[![DeepSource](https://app.deepsource.com/gh/gooze-dev/goozels.svg/?label=active+issues&show_trend=true)](https://app.deepsource.com/gh/gooze-dev/goozels/)
+[![CodeFactor](https://www.codefactor.io/repository/github/gooze-dev/goozels/badge)](https://www.codefactor.io/repository/github/gooze-dev/goozels)
+[![Known Vulnerabilities](https://snyk.io/test/github/gooze-dev/goozels/badge.svg)](https://snyk.io/test/github/gooze-dev/goozels)
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fgooze-dev%2Fgoozels.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Fgooze-dev%2Fgoozels?ref=badge_shield)
 
 Editor support for [**gooze**](https://github.com/gooze-dev/gooze), the Go
 mutation-testing tool. goozels adds autocompletion, hovers, live error-checking,
