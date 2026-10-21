@@ -1,5 +1,8 @@
 # goozels
 
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/gooze-dev/goozels/badge)](https://scorecard.dev/viewer/?uri=github.com/gooze-dev/goozels)
+[![codecov](https://codecov.io/gh/gooze-dev/goozels/graph/badge.svg)](https://app.codecov.io/gh/gooze-dev/goozels)
+
 Editor support for [**gooze**](https://github.com/gooze-dev/gooze), the Go
 mutation-testing tool. goozels adds autocompletion, hovers, live error-checking,
 and one-click mutation runs to your editor — for both `//gooze:ignore` comments in
