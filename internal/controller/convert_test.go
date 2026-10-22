@@ -87,3 +87,32 @@ func TestLSPCodeLenses(t *testing.T) {
 		t.Errorf("command = %+v", got[0].Command)
 	}
 }
+
+func TestLSPCompletionWithoutDocHasNoDocumentation(t *testing.T) {
+	items := []model.CompletionItem{{Label: "arithmetic", InsertText: "arithmetic"}}
+	list := lspCompletion(0, "//gooze:ignore ", lsp.CompletionKindEnumMember, items)
+	if doc := list.Items[0].Documentation; doc != nil {
+		t.Errorf("documentation = %+v, want none for an item without docs", doc)
+	}
+}
+
+func TestPositionFromModel(t *testing.T) {
+	lines := []string{"ab", "éx"}
+	tests := map[string]struct {
+		pos  model.Position
+		want lsp.Position
+	}{
+		"first line":        {model.Position{Line: 0, Column: 2}, lsp.Position{Line: 0, Character: 2}},
+		"second line":       {model.Position{Line: 1, Column: 3}, lsp.Position{Line: 1, Character: 2}}, // é is 2 bytes, 1 UTF-16 unit
+		"line after last":   {model.Position{Line: 2, Column: 3}, lsp.Position{Line: 2, Character: 0}},
+		"line far past end": {model.Position{Line: 9, Column: 3}, lsp.Position{Line: 9, Character: 0}},
+		"negative line":     {model.Position{Line: -1, Column: 3}, lsp.Position{Line: -1, Character: 0}},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			if got := positionFromModel(lines, tt.pos); got != tt.want {
+				t.Errorf("positionFromModel(%+v) = %+v, want %+v", tt.pos, got, tt.want)
+			}
+		})
+	}
+}

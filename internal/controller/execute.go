@@ -271,7 +271,9 @@ func (s *Server) refreshReports() {
 
 // workspaceRoot extracts the workspace root path from initialize params.
 func workspaceRoot(params json.RawMessage) string {
-	if len(params) == 0 {
+	// Equivalent: empty or one-byte params fail to unmarshal below and return
+	// "" the same way, so this check is only a shortcut.
+	if len(params) == 0 { //gooze:ignore comparison, numbers
 		return ""
 	}
 

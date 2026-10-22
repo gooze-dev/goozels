@@ -527,3 +527,40 @@ func TestBreachesOf(t *testing.T) {
 		}
 	}
 }
+
+func TestWorkspaceRoot(t *testing.T) {
+	tests := map[string]struct {
+		params string
+		want   string
+	}{
+		"no params":       {``, ""},
+		"not an object":   {`5`, ""},
+		"workspaceFolder": {`{"rootUri":"file:///root","workspaceFolders":[{"uri":"file:///folder"}]}`, "/folder"},
+		"first folder":    {`{"workspaceFolders":[{"uri":"file:///a"},{"uri":"file:///b"}]}`, "/a"},
+		"empty folder uri falls back to rootUri": {
+			`{"rootUri":"file:///root","workspaceFolders":[{"uri":""}]}`, "/root",
+		},
+		"rootUri":                          {`{"rootUri":"file:///root","rootPath":"/path"}`, "/root"},
+		"empty rootUri falls back to path": {`{"rootUri":"","rootPath":"/path"}`, "/path"},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			if got := workspaceRoot(json.RawMessage(tt.params)); got != tt.want {
+				t.Errorf("workspaceRoot(%s) = %q, want %q", tt.params, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMergeCodeLensResultWithoutGoplsLenses(t *testing.T) {
+	ours := []lsp.CodeLens{{Command: &lsp.Command{Title: "gooze: run package", Command: "gooze.run"}}}
+	for _, gopls := range []string{"", "  ", "null"} {
+		var lenses []lsp.CodeLens
+		if err := json.Unmarshal(mergeCodeLensResult(json.RawMessage(gopls), ours), &lenses); err != nil {
+			t.Fatalf("decode merged lenses for %q: %v", gopls, err)
+		}
+		if len(lenses) != 1 || lenses[0].Command.Command != "gooze.run" {
+			t.Errorf("merged lenses for gopls %q = %+v, want only ours", gopls, lenses)
+		}
+	}
+}

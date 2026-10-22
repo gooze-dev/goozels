@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"testing"
@@ -193,6 +194,41 @@ func goplsResponder(req *jsonrpc.Message) *jsonrpc.Message {
 	}
 }
 
+// bufServer is a Server writing to buffers, so tests can call its handlers
+// directly and read everything it sent to the client and to gopls.
+type bufServer struct {
+	*Server
+	client, gopls *bytes.Buffer
+}
+
+func newBufServer() *bufServer {
+	var client, gopls bytes.Buffer
+	return &bufServer{Server: NewServer(&client, &gopls, productionDeps("gooze")), client: &client, gopls: &gopls}
+}
+
+// sent decodes every message written to buf.
+func sent(buf *bytes.Buffer) []*jsonrpc.Message {
+	r := jsonrpc.NewReader(bytes.NewReader(buf.Bytes()))
+	var msgs []*jsonrpc.Message
+	for {
+		msg, err := r.Read()
+		if err != nil {
+			return msgs
+		}
+		msgs = append(msgs, msg)
+	}
+}
+
+// notification builds a notification with params encoded as JSON.
+func notification(t *testing.T, method string, params any) *jsonrpc.Message {
+	t.Helper()
+	raw, err := json.Marshal(params)
+	if err != nil {
+		t.Fatalf("marshal params: %v", err)
+	}
+	return &jsonrpc.Message{JSONRPC: "2.0", Method: method, Params: raw}
+}
+
 // --- server.go tests ---
 
 func TestNewServerDefaultWorkdir(t *testing.T) {
@@ -207,5 +243,24 @@ func TestNewServerDefaultWorkdir(t *testing.T) {
 	s.setWorkdir("") // empty is ignored
 	if got := s.getWorkdir(); got != "/proj/root" {
 		t.Errorf("empty setWorkdir changed value to %q", got)
+	}
+}
+
+func TestRegisterAugmentIgnoresNotifications(t *testing.T) {
+	s := NewServer(io.Discard, io.Discard, productionDeps("gooze"))
+	s.registerAugment("", func(*jsonrpc.Message) {})
+	if _, ok := s.takeAugment(""); ok {
+		t.Error("an augment was registered for a message without an id")
+	}
+}
+
+func TestRequestClientNumbersItsRequests(t *testing.T) {
+	s := newBufServer()
+	s.requestClient("window/showMessageRequest", map[string]string{}, func(*jsonrpc.Message) {})
+	s.requestClient("window/showMessageRequest", map[string]string{}, func(*jsonrpc.Message) {})
+
+	msgs := sent(s.client)
+	if len(msgs) != 2 || string(msgs[0].ID) != `"goozels-1"` || string(msgs[1].ID) != `"goozels-2"` {
+		t.Fatalf("request ids = %v, want goozels-1 then goozels-2", msgs)
 	}
 }

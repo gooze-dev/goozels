@@ -325,18 +325,20 @@ func (s *Server) publishConfig(uri string) {
 // positional request. ok is false when the document or position is unavailable.
 func (s *Server) posContext(msg *jsonrpc.Message) (uri string, lineNum int, line string, col int, ok bool) {
 	var p lsp.TextDocumentPositionParams
+	// Equivalent (numbers, on the three returns below): callers ignore the
+	// other values when ok is false.
 	if err := json.Unmarshal(msg.Params, &p); err != nil {
-		return "", 0, "", 0, false
+		return "", 0, "", 0, false //gooze:ignore numbers
 	}
 
 	text, found := s.store.Text(p.TextDocument.URI)
 	if !found {
-		return "", 0, "", 0, false
+		return "", 0, "", 0, false //gooze:ignore numbers
 	}
 
 	lines := document.Lines(text)
 	if p.Position.Line < 0 || p.Position.Line >= len(lines) {
-		return "", 0, "", 0, false
+		return "", 0, "", 0, false //gooze:ignore numbers
 	}
 
 	line = lines[p.Position.Line]
@@ -346,7 +348,9 @@ func (s *Server) posContext(msg *jsonrpc.Message) (uri string, lineNum int, line
 
 // uriOf extracts textDocument.uri from raw params, or "" when absent.
 func uriOf(params json.RawMessage) string {
-	if len(params) == 0 {
+	// Equivalent: empty or one-byte params fail to unmarshal below and return
+	// "" the same way, so this check is only a shortcut.
+	if len(params) == 0 { //gooze:ignore comparison, numbers
 		return ""
 	}
 
