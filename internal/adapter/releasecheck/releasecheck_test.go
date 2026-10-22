@@ -54,11 +54,12 @@ func TestChecker_Cached(t *testing.T) {
 		wantTag   string
 		wantFresh bool
 	}{
-		"missing":        {"", "", false},
-		"corrupt":        {"{not json", "", false},
-		"fresh":          {`{"tag":"v1.2.5","checked_at":"2026-10-21T11:30:00Z"}`, "v1.2.5", true},
-		"stale":          {`{"tag":"v1.0.0","checked_at":"2026-10-21T10:59:59Z"}`, "v1.0.0", false},
-		"cached failure": {`{"tag":"","checked_at":"2026-10-21T11:30:00Z"}`, "", true},
+		"missing":         {"", "", false},
+		"corrupt":         {"{not json", "", false},
+		"fresh":           {`{"tag":"v1.2.5","checked_at":"2026-10-21T11:30:00Z"}`, "v1.2.5", true},
+		"stale":           {`{"tag":"v1.0.0","checked_at":"2026-10-21T10:59:59Z"}`, "v1.0.0", false},
+		"exactly TTL old": {`{"tag":"v1.1.0","checked_at":"2026-10-21T11:00:00Z"}`, "v1.1.0", false},
+		"cached failure":  {`{"tag":"","checked_at":"2026-10-21T11:30:00Z"}`, "", true},
 	}
 
 	for name, tt := range tests {
@@ -74,6 +75,42 @@ func TestChecker_Cached(t *testing.T) {
 			assert.Equal(t, tt.wantTag, tag)
 			assert.Equal(t, tt.wantFresh, fresh)
 			assert.Equal(t, 0, *hits, "Cached must never touch the network")
+		})
+	}
+}
+
+// A missing or unreadable cache is never fresh, whatever the clock says: even
+// a clock at the zero time must not turn "no cache" into a fresh answer.
+func TestChecker_CachedMissingIsNeverFresh(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		noCachePath bool
+		cache       string // "" means no cache file
+	}{
+		"no cache path": {noCachePath: true},
+		"missing":       {},
+		"corrupt":       {cache: "{not json"},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			checker, _ := newTestChecker(t, serveVersion("v1.3.0"))
+			checker.Now = func() time.Time { return time.Time{} }
+
+			if tt.cache != "" {
+				writeReleaseCache(t, checker, tt.cache)
+			}
+
+			if tt.noCachePath {
+				checker.CachePath = ""
+			}
+
+			tag, fresh := checker.Cached()
+			assert.Empty(t, tag)
+			assert.False(t, fresh)
 		})
 	}
 }
@@ -121,6 +158,27 @@ func TestChecker_RefreshCachesFailures(t *testing.T) {
 	assert.True(t, fresh, "a failed lookup should not be retried within the TTL")
 }
 
+// Only 200 is an answer: a status above or below it is an error even when the
+// body holds a version (101 is the one status below 200 a client receives).
+func TestChecker_RefreshRejectsNon200EvenWithAVersion(t *testing.T) {
+	t.Parallel()
+
+	for _, status := range []int{http.StatusSwitchingProtocols, http.StatusNotFound} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			t.Parallel()
+
+			checker, _ := newTestChecker(t, func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(status)
+				_, _ = w.Write([]byte(`{"Version":"v9.9.9"}`))
+			})
+
+			tag, err := checker.Refresh(context.Background())
+			require.ErrorContains(t, err, http.StatusText(status), "the error names the status")
+			assert.Empty(t, tag)
+		})
+	}
+}
+
 func TestChecker_RefreshOffline(t *testing.T) {
 	t.Parallel()
 
@@ -160,4 +218,33 @@ func TestChecker_RefreshCanceledIsNotCached(t *testing.T) {
 
 	_, statErr := os.Stat(checker.CachePath)
 	assert.True(t, os.IsNotExist(statErr), "a canceled lookup must not be cached")
+}
+
+func TestNew(t *testing.T) {
+	cacheHome := t.TempDir()
+	t.Setenv("XDG_CACHE_HOME", cacheHome)
+	t.Setenv("HOME", cacheHome)
+
+	dir, err := os.UserCacheDir()
+	require.NoError(t, err)
+
+	checker := New()
+	assert.Equal(t, latestReleaseURL, checker.URL)
+	assert.Equal(t, filepath.Join(dir, "goozels", releaseCacheFileName), checker.CachePath)
+	assert.Equal(t, 24*time.Hour, checker.TTL, "check for a new release at most once a day")
+	require.NotNil(t, checker.Client)
+	assert.Equal(t, 5*time.Second, checker.Client.Timeout, "a lookup never blocks for long")
+	require.NotNil(t, checker.Now)
+}
+
+func TestNew_WithoutUserCacheDirDisablesCaching(t *testing.T) {
+	t.Setenv("XDG_CACHE_HOME", "")
+	t.Setenv("HOME", "")
+	t.Setenv("LocalAppData", "")
+
+	if _, err := os.UserCacheDir(); err == nil {
+		t.Skip("this platform has a user cache directory without HOME")
+	}
+
+	assert.Empty(t, New().CachePath)
 }

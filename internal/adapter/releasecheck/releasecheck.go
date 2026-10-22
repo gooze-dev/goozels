@@ -112,7 +112,8 @@ func (c *Checker) fetch(ctx context.Context) (string, error) {
 }
 
 func (c *Checker) readCache() (releaseCache, bool) {
-	if c.CachePath == "" {
+	// Equivalent: no path sorts before "", and reading "" fails like a missing file.
+	if c.CachePath == "" { //gooze:ignore comparison
 		return releaseCache{}, false
 	}
 
@@ -133,7 +134,9 @@ func (c *Checker) readCache() (releaseCache, bool) {
 // process killed mid-write never leaves a truncated cache. Failures are ignored
 // since the cache is only an optimization.
 func (c *Checker) writeCache(cached releaseCache) {
-	if c.CachePath == "" {
+	// Equivalent: no path sorts before "", and renaming onto "" fails, so the
+	// temp file is removed and nothing is written.
+	if c.CachePath == "" { //gooze:ignore comparison
 		return
 	}
 
