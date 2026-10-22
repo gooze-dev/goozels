@@ -12,7 +12,8 @@ func Lines(text string) []string {
 	for i := range len(text) {
 		if text[i] == '\n' {
 			line := text[start:i]
-			if n := len(line); n > 0 && line[n-1] == '\r' {
+			// Equivalent: n is a length, never negative, so n > 0 is n != 0.
+			if n := len(line); n > 0 && line[n-1] == '\r' { //gooze:ignore comparison
 				line = line[:n-1]
 			}
 
@@ -22,7 +23,8 @@ func Lines(text string) []string {
 	}
 
 	last := text[start:]
-	if n := len(last); n > 0 && last[n-1] == '\r' {
+	// Equivalent: n is a length, never negative, so n > 0 is n != 0.
+	if n := len(last); n > 0 && last[n-1] == '\r' { //gooze:ignore comparison
 		last = last[:n-1]
 	}
 
