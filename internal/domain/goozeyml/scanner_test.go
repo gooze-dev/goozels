@@ -310,6 +310,37 @@ func TestCompleteKeysAfterNestingAndDedent(t *testing.T) {
 			line: 3, col: 6,
 			want: []string{"average"},
 		},
+		{
+			name: "same name in another section is not a sibling",
+			text: "run:\n  diff: origin/main\nthreshold:\n  di",
+			line: 3, col: 4,
+			want: []string{"diff"},
+		},
+		{
+			name: "same names in a sibling section are not siblings",
+			text: "threshold:\n  diff:\n    total: 1\n    average: 1\n    file: 1\n  ",
+			line: 5, col: 2,
+			want: []string{"total", "average", "file"},
+			not:  []string{"diff"},
+		},
+		{
+			name: "a repeated section only counts its own entries",
+			text: "run:\n  parallel: 1\nlog:\n  level: info\nrun:\n  pa",
+			line: 5, col: 4,
+			want: []string{"parallel"},
+		},
+		{
+			name: "sibling before a nested child is still left out",
+			text: "threshold:\n  total: 1\n  diff:\n    total: 1\n  to",
+			line: 4, col: 4,
+			not: []string{"total"},
+		},
+		{
+			name: "top level after a dedent keeps top-level siblings",
+			text: "output: x\nrun:\n  parallel: 1\nou",
+			line: 3, col: 2,
+			not: []string{"output"},
+		},
 	}
 
 	for _, tt := range tests {
