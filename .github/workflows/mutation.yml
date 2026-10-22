@@ -1,11 +1,15 @@
 ---
 name: Mutation testing
 
-# Runs on every pull request. The :main baseline is read-only here (pulled for
-# the incremental cache); to refresh it, run `gooze report push "$REPORTS_REF"`
-# from a separate main-branch workflow or seed it manually.
+# Runs on every pull request and on pushes to main. Every run pulls the :main
+# baseline for the incremental cache, so unchanged files are skipped. Only a
+# push to main (or a manual run on main, e.g. to seed the baseline) publishes
+# the merged reports back to :main; pull requests never write to the registry.
 on:
   pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -26,7 +30,7 @@ jobs:
       matrix:
         shard: [0, 1]
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # The checkout is still needed below so gooze has source to mutate.
     - name: Install gooze
@@ -45,7 +49,7 @@ jobs:
     - name: Archive shard reports
       run: tar -czf "shard_${{ matrix.shard }}.tgz" -C .gooze-reports "shard_${{ matrix.shard }}"
     - name: Upload shard reports
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
       with:
         name: shard_${{ matrix.shard }}
         path: shard_${{ matrix.shard }}.tgz
@@ -55,8 +59,13 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     container: golang:1.27
+    # Write access only here, for the main-only push below. Fork pull requests
+    # get a read-only token regardless.
+    permissions:
+      contents: read
+      packages: write
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
     - name: Install gooze
       run: go install gooze.dev/pkg/gooze@latest
 
@@ -68,7 +77,7 @@ jobs:
       # Playwright-style: pull every shard's archive into one staging dir. The
       # tarballs are uniquely named (shard_0.tgz, ...), so merge-multiple is safe.
     - name: Download shard archives
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
       with:
         path: shard-archives
         pattern: shard_*
@@ -88,3 +97,9 @@ jobs:
 
     - name: Show mutation score
       run: gooze report view
+
+      # Only main publishes the merged baseline, so pull requests reuse the
+      # results of the latest main run instead of re-testing every file.
+    - name: Publish merged baseline (main only)
+      if: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
+      run: gooze report push "$REPORTS_REF"
