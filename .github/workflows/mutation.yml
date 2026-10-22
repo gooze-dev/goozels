@@ -5,6 +5,8 @@ name: Mutation testing
 # baseline for the incremental cache, so unchanged files are skipped. Only a
 # push to main (or a manual run on main, e.g. to seed the baseline) publishes
 # the merged reports back to :main; pull requests never write to the registry.
+# Pull requests are also gated: the diff job fails unless every mutant on the
+# changed lines is killed.
 on:
   pull_request:
   push:
@@ -34,7 +36,7 @@ jobs:
 
       # The checkout is still needed below so gooze has source to mutate.
     - name: Install gooze
-      run: go install gooze.dev/pkg/gooze@latest
+      run: go install gooze.dev/pkg/gooze@v1.3.0
 
       # Reuse the main baseline so unchanged files are skipped (the cache).
     - name: Restore baseline from main
@@ -55,6 +57,25 @@ jobs:
         path: shard_${{ matrix.shard }}.tgz
         if-no-files-found: error
 
+  # Pull requests only: every mutant on the lines the pull request changes must
+  # be killed (threshold.diff.total in gooze.yaml). Gating a sharded diff run
+  # isn't supported, so this job runs unsharded; diff mode only mutates the
+  # changed lines, so it stays small.
+  diff:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    container: golang:1.27
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        fetch-depth: 0         # diff mode needs the merge base with the base branch
+    - name: Install gooze
+      run: go install gooze.dev/pkg/gooze@v1.3.0
+    - name: Changed lines must be fully killed
+      run: |
+        git config --global --add safe.directory "$GITHUB_WORKSPACE"
+        gooze run -p 2 --diff "origin/${{ github.base_ref }}" -x '^vendor/' -x '^mock_' ./...
+
   merge:
     needs: test
     runs-on: ubuntu-latest
@@ -67,7 +88,7 @@ jobs:
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
     - name: Install gooze
-      run: go install gooze.dev/pkg/gooze@latest
+      run: go install gooze.dev/pkg/gooze@v1.3.0
 
       # Pull main's baseline first so the merge keeps unchanged (cached) reports
       # alongside the shards' freshly-tested ones.

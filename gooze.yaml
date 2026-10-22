@@ -2,3 +2,7 @@ version: 1
 
 paths:
   exclude: ['^vendor/', '^mock_']   # regex patterns of files to skip
+
+threshold:
+  diff:
+    total: 100                      # every mutant on a pull request's changed lines must be killed
