@@ -92,7 +92,8 @@ func applyChange(text string, ch lsp.TextDocumentContentChangeEvent) string {
 	start := lsp.PositionToOffset(text, ch.Range.Start)
 
 	end := lsp.PositionToOffset(text, ch.Range.End)
-	if start > end {
+	// Equivalent: swapping equal offsets changes nothing, so >= behaves as >.
+	if start > end { //gooze:ignore comparison
 		start, end = end, start
 	}
 
