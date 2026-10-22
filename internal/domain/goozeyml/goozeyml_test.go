@@ -307,15 +307,15 @@ func TestDiagnoseListItems(t *testing.T) {
 		want string // "" for valid
 	}{
 		"flow list ok":             {"run:\n  mutagens: [" + valid + "]\n", ""},
-		"flow list unknown":        {"run:\n  mutagens: [comparison, bogus]\n", `invalid value for "run.mutagens": unknown item "bogus"; expected one of: `+allMutagens},
+		"flow list unknown":        {"run:\n  mutagens: [comparison, bogus]\n", `invalid value for "run.mutagens": unknown item "bogus"; expected one of: ` + allMutagens},
 		"flow list quoted":         {"run:\n  mutagens: [\"comparison\", 'unary']\n", ""},
 		"single value":             {"run:\n  mutagens: comparison\n", ""},
-		"single value bad":         {"run:\n  mutagens: bogus\n", `invalid value for "run.mutagens": unknown item "bogus"; expected one of: `+allMutagens},
+		"single value bad":         {"run:\n  mutagens: bogus\n", `invalid value for "run.mutagens": unknown item "bogus"; expected one of: ` + allMutagens},
 		"off by default":           {"run:\n  mutagens: statement\n", ""},
 		"empty flow list":          {"run:\n  mutagens: []\n", ""},
 		"block list ok":            {"run:\n  mutagens:\n    - comparison\n    - logical # why\n", ""},
-		"block list unknown":       {"run:\n  mutagens:\n    - comparison\n    - bogus\n", `invalid value for "run.mutagens": unknown item "bogus"; expected one of: `+allMutagens},
-		"block list at key indent": {"run:\n  mutagens:\n  - bogus\n", `invalid value for "run.mutagens": unknown item "bogus"; expected one of: `+allMutagens},
+		"block list unknown":       {"run:\n  mutagens:\n    - comparison\n    - bogus\n", `invalid value for "run.mutagens": unknown item "bogus"; expected one of: ` + allMutagens},
+		"block list at key indent": {"run:\n  mutagens:\n  - bogus\n", `invalid value for "run.mutagens": unknown item "bogus"; expected one of: ` + allMutagens},
 		"other lists unchecked":    {"paths:\n  exclude:\n    - anything\n  exclude2: x\n", `unknown gooze config key "paths.exclude2"`},
 	}
 
