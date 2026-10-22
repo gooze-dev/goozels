@@ -62,22 +62,28 @@ func showMessageText(t *testing.T, msg *jsonrpc.Message) lsp.ShowMessageParams {
 }
 
 // expectNoShowMessage round-trips a request, then fails on any showMessage seen
-// within a short grace period.
+// before its response or within a short grace period after it. It reads the
+// inbox itself: awaitResponse would discard a showMessage that arrives first.
 func expectNoShowMessage(t *testing.T, h *harness) {
 	t.Helper()
 
 	h.send(t, "initialize", "99", map[string]any{"capabilities": map[string]any{}})
-	h.awaitResponse(t, "99")
 
-	deadline := time.After(100 * time.Millisecond)
+	timeout := time.After(3 * time.Second)
+	var quiet <-chan time.Time
 	for {
 		select {
 		case msg := <-h.inbox:
 			if msg.Method == "window/showMessage" {
 				t.Fatalf("unexpected showMessage: %s", msg.Params)
 			}
-		case <-deadline:
+			if quiet == nil && msg.IsResponse() && msg.IDKey() == "99" {
+				quiet = time.After(100 * time.Millisecond)
+			}
+		case <-quiet:
 			return
+		case <-timeout:
+			t.Fatal("timed out waiting for response id=99")
 		}
 	}
 }
