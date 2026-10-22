@@ -183,3 +183,89 @@ func TestInitialized_NoAnnouncement(t *testing.T) {
 		})
 	}
 }
+
+// deadlineReleases records the deadline of the refresh context.
+type deadlineReleases struct {
+	called   time.Time
+	deadline chan time.Time
+}
+
+func (d *deadlineReleases) Cached() (string, bool) { return "", false }
+
+func (d *deadlineReleases) Refresh(ctx context.Context) (string, error) {
+	deadline, _ := ctx.Deadline()
+	d.deadline <- deadline
+	return "", errors.New("offline")
+}
+
+func TestInitialized_RefreshIsBoundedByTenSeconds(t *testing.T) {
+	releases := &deadlineReleases{called: time.Now(), deadline: make(chan time.Time, 1)}
+	h := newUpdateHarness(t, releases, "v0.2.0")
+	h.send(t, "initialized", "", map[string]any{})
+
+	select {
+	case deadline := <-releases.deadline:
+		if d := deadline.Sub(releases.called); d < 9*time.Second || d > 11*time.Second {
+			t.Errorf("refresh deadline is %v after the check started, want about 10s", d)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("the stale cache was not refreshed")
+	}
+}
+
+// returnedReleases closes returned when Refresh returns, so a test can check
+// for (the absence of) an announcement only after the refresh is done.
+type returnedReleases struct {
+	*stubReleases
+	returned chan struct{}
+}
+
+func (r returnedReleases) Refresh(ctx context.Context) (string, error) {
+	defer close(r.returned)
+	return r.stubReleases.Refresh(ctx)
+}
+
+func TestInitialized_FailedRefreshIsSilentEvenWithATag(t *testing.T) {
+	stub := newStubReleases("v0.2.0", false, "v0.9.0", errors.New("partial response"))
+	close(stub.release)
+	releases := returnedReleases{stubReleases: stub, returned: make(chan struct{})}
+	h := newUpdateHarness(t, releases, "v0.2.0")
+
+	h.send(t, "initialized", "", map[string]any{})
+	<-h.goplsSeen
+
+	select {
+	case <-releases.returned:
+	case <-time.After(3 * time.Second):
+		t.Fatal("the stale cache was not refreshed")
+	}
+
+	// Read the inbox directly: expectNoShowMessage's round trip would drain an
+	// announcement sent right after the refresh.
+	grace := time.After(200 * time.Millisecond)
+	for {
+		select {
+		case msg := <-h.inbox:
+			if msg.Method == "window/showMessage" {
+				t.Fatalf("unexpected showMessage after a failed refresh: %s", msg.Params)
+			}
+		case <-grace:
+			return
+		}
+	}
+}
+
+func TestInitialized_AnnouncesRefreshedReleaseThatSortsBeforeTheCachedTag(t *testing.T) {
+	// "v0.10.0" < "v0.9.0" as strings, but it is the newer release.
+	releases := newStubReleases("v0.9.0", false, "v0.10.0", nil)
+	close(releases.release)
+	h := newUpdateHarness(t, releases, "v0.8.0")
+
+	h.send(t, "initialized", "", map[string]any{})
+
+	first := showMessageText(t, h.awaitNotification(t, "window/showMessage"))
+	second := showMessageText(t, h.awaitNotification(t, "window/showMessage"))
+	if !strings.Contains(first.Message, "v0.9.0") || !strings.Contains(second.Message, "v0.10.0") {
+		t.Errorf("announcements = %q, %q; want the cached v0.9.0, then the refreshed v0.10.0", first.Message, second.Message)
+	}
+}

@@ -16,7 +16,9 @@ var goozeTriggerChars = []string{" ", ",", ":"}
 // augmentInitialize merges gooze trigger characters into gopls's advertised
 // capabilities before relaying the initialize response to the client.
 func (s *Server) augmentInitialize(resp *jsonrpc.Message) {
-	if len(resp.Result) == 0 {
+	// Equivalent: an empty or one-byte result fails to unmarshal below and is
+	// relayed unchanged the same way, so this check is only a shortcut.
+	if len(resp.Result) == 0 { //gooze:ignore comparison, numbers
 		s.sendClient(resp)
 		return
 	}
@@ -52,7 +54,8 @@ func withGoozeCapabilities(root map[string]json.RawMessage) (map[string]json.Raw
 
 	capsRaw, err := json.Marshal(caps)
 	if err != nil {
-		return nil, false
+		// Equivalent: caps holds only valid JSON values, so Marshal can't fail.
+		return nil, false //gooze:ignore boolean
 	}
 
 	root["capabilities"] = capsRaw
@@ -77,12 +80,14 @@ func addTriggerChars(caps map[string]json.RawMessage) bool {
 	if raw, err := json.Marshal(unionStrings(chars, goozeTriggerChars)); err == nil {
 		provider["triggerCharacters"] = raw
 	} else {
-		return false
+		// Equivalent: marshaling a []string can't fail.
+		return false //gooze:ignore boolean
 	}
 
 	raw, err := json.Marshal(provider)
 	if err != nil {
-		return false
+		// Equivalent: provider holds only valid JSON values, so Marshal can't fail.
+		return false //gooze:ignore boolean
 	}
 
 	caps["completionProvider"] = raw
@@ -108,12 +113,14 @@ func addExecuteCommands(caps map[string]json.RawMessage) bool {
 	if raw, err := json.Marshal(unionStrings(cmds, command.Names())); err == nil {
 		provider["commands"] = raw
 	} else {
-		return false
+		// Equivalent: marshaling a []string can't fail.
+		return false //gooze:ignore boolean
 	}
 
 	raw, err := json.Marshal(provider)
 	if err != nil {
-		return false
+		// Equivalent: provider holds only valid JSON values, so Marshal can't fail.
+		return false //gooze:ignore boolean
 	}
 
 	caps["executeCommandProvider"] = raw
