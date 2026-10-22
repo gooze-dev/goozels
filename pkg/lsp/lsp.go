@@ -186,7 +186,9 @@ func IsGoURI(uri string) bool { return strings.HasSuffix(URIPath(uri), ".go") }
 
 // UTF16ToByte converts a UTF-16 character offset on a line to a byte offset.
 func UTF16ToByte(line string, u16 int) int {
-	if u16 <= 0 {
+	// Equivalent: the loop below also returns 0 for u16 <= 0, so < and == only
+	// move where that 0 comes from.
+	if u16 <= 0 { //gooze:ignore comparison
 		return 0
 	}
 
@@ -208,7 +210,9 @@ func UTF16ToByte(line string, u16 int) int {
 
 // ByteToUTF16 converts a byte offset on a line to a UTF-16 character offset.
 func ByteToUTF16(line string, b int) int {
-	if b > len(line) {
+	// Equivalent: the loop stops at b or counts the whole line, so clamping at
+	// len(line) with >= or == gives the same count.
+	if b > len(line) { //gooze:ignore comparison
 		b = len(line)
 	}
 
