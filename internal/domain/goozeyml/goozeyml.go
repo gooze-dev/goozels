@@ -58,7 +58,8 @@ func parseEntries(lines []string) []entry {
 
 func parseEntry(lineNum int, line string) (entry, bool) {
 	indent := 0
-	for indent < len(line) && line[indent] == ' ' {
+	// Equivalent: indent counts up by one from 0, so != len(line) is < len(line).
+	for indent < len(line) && line[indent] == ' ' { //gooze:ignore comparison
 		indent++
 	}
 
@@ -68,7 +69,8 @@ func parseEntry(lineNum int, line string) (entry, bool) {
 	}
 
 	colon := separatorColon(rest)
-	if colon < 0 {
+	// Equivalent: colon 0 leaves an empty key, rejected just below, so <= 0 and < 1 act as < 0.
+	if colon < 0 { //gooze:ignore comparison, numbers
 		return entry{}, false
 	}
 
@@ -80,7 +82,9 @@ func parseEntry(lineNum int, line string) (entry, bool) {
 	valueStart := indent + colon + 1
 
 	value := ""
-	if valueStart <= len(line) {
+	// Equivalent: the colon is inside line, so valueStart never passes len(line),
+	// and at len(line) the value is empty either way.
+	if valueStart <= len(line) { //gooze:ignore comparison
 		value = stripComment(strings.TrimSpace(line[valueStart:]))
 	}
 
@@ -151,15 +155,19 @@ func (ed Editor) Complete(text string, lineNum, col int) []model.CompletionItem 
 // "key:" line whose field is an enum. ok is false when it doesn't apply.
 func (ed Editor) valueCompletion(lines []string, lineNum int, line string, col int) ([]model.CompletionItem, bool) {
 	e, ok := parseEntry(lineNum, line)
-	if !ok || col <= e.valueStart-1 || e.keyEnd >= col {
+	// Equivalent: valueStart is keyEnd+1, so both bounds are the same check and
+	// each covers the other when it changes.
+	if !ok || col <= e.valueStart-1 || e.keyEnd >= col { //gooze:ignore comparison, logical
 		return nil, false
 	}
 
 	path, _ := pathAtIndent(parseEntries(lines[:lineNum]), e.indent)
 
 	f, ok := ed.lookup(append(path, e.key))
-	if !ok || f.Kind != config.KindEnum {
-		return nil, false
+	// Equivalent: the only kind above KindEnum, KindFloat, has no values, and
+	// past the colon key completion offers nothing, so no items either way.
+	if !ok || f.Kind != config.KindEnum { //gooze:ignore comparison
+		return nil, false //gooze:ignore boolean
 	}
 
 	return enumItems(f, line, e.valueStart, col), true
@@ -230,7 +238,8 @@ func (ed Editor) Hover(text string, lineNum, col int) (model.Hover, bool) {
 	line := lines[lineNum]
 
 	e, ok := parseEntry(lineNum, line)
-	if !ok || col < e.keyStart || col > e.keyEnd {
+	// Equivalent: without an entry, the zero entry's empty key never resolves below.
+	if !ok || col < e.keyStart || col > e.keyEnd { //gooze:ignore logical
 		return model.Hover{}, false
 	}
 
@@ -350,7 +359,8 @@ func (ed Editor) diagnoseEntry(lines []string, path []string, e entry) (model.Di
 		return model.Diagnostic{Range: keyRange(e), Severity: model.SeverityWarning, Message: msg, Source: source}, true
 	}
 
-	if e.value == "" {
+	// Equivalent: nothing sorts below "", and validateScalar accepts an empty value.
+	if e.value == "" { //gooze:ignore comparison
 		return model.Diagnostic{}, false
 	}
 
@@ -457,7 +467,8 @@ func malformedLine(lineNum int, line string) (model.Diagnostic, bool) {
 
 // entryPath is the dotted key path of e under its enclosing mapping entries.
 func entryPath(stack []entry, e entry) []string {
-	path := make([]string, 0, len(stack)+1)
+	// Equivalent: the capacity is only a hint; append grows the slice.
+	path := make([]string, 0, len(stack)+1) //gooze:ignore arithmetic, numbers
 	for _, s := range stack {
 		path = append(path, s.key)
 	}
@@ -467,11 +478,14 @@ func entryPath(stack []entry, e entry) []string {
 
 func enumItems(f config.Field, line string, valStart, col int) []model.CompletionItem {
 	tokenStart, tokenEnd := wordBounds(line, valStart, col)
-	for tokenStart < len(line) && line[tokenStart] == ' ' {
+	// Equivalent: tokenStart starts on a word byte or at col, and spaces skipped
+	// past col are clamped back to col below, so these bounds end the same.
+	for tokenStart < len(line) && line[tokenStart] == ' ' { //gooze:ignore comparison
 		tokenStart++
 	}
 
-	if tokenStart > col {
+	// Equivalent: setting tokenStart to col when they're equal changes nothing.
+	if tokenStart > col { //gooze:ignore comparison
 		tokenStart = col
 	}
 
@@ -516,7 +530,8 @@ func (ed Editor) childrenAt(path []string) []config.Field {
 	}
 
 	f, ok := ed.lookup(path)
-	if !ok || f.Kind != config.KindObject {
+	// Equivalent: only objects have children; any other field's Children is nil.
+	if !ok || f.Kind != config.KindObject { //gooze:ignore comparison, logical
 		return nil
 	}
 
@@ -585,7 +600,8 @@ func validateItem(f config.Field, item string) string {
 // validateNumber checks raw is a number of the field's kind, within its
 // bounds.
 func validateNumber(f config.Field, raw string) string {
-	if f.Kind == config.KindFloat {
+	// Equivalent: KindFloat is the highest kind, so >= is ==.
+	if f.Kind == config.KindFloat { //gooze:ignore comparison
 		return validateFloat(f, raw)
 	}
 
@@ -610,7 +626,8 @@ func validateInt(f config.Field, raw string) string {
 // validateFloat checks raw is a number within the schema's bounds (e.g. a
 // threshold between 0 and 100), the same bounds gooze enforces.
 func validateFloat(f config.Field, raw string) string {
-	x, err := strconv.ParseFloat(raw, 64)
+	// Equivalent: ParseFloat treats any bit size but 32 as 64.
+	x, err := strconv.ParseFloat(raw, 64) //gooze:ignore numbers
 	if err != nil {
 		return "expected a number"
 	}
@@ -662,7 +679,8 @@ func defaultText(v any) string {
 }
 
 func insertText(f config.Field) string {
-	if f.Kind == config.KindObject {
+	// Equivalent: KindObject is the lowest kind, so <= is ==.
+	if f.Kind == config.KindObject { //gooze:ignore comparison
 		return f.Name + ":"
 	}
 
@@ -684,7 +702,8 @@ func kindLabel(f config.Field) string {
 
 func leadingSpaces(line string) int {
 	n := 0
-	for n < len(line) && line[n] == ' ' {
+	// Equivalent: n counts up by one from 0, so != len(line) is < len(line).
+	for n < len(line) && line[n] == ' ' { //gooze:ignore comparison
 		n++
 	}
 
@@ -693,12 +712,14 @@ func leadingSpaces(line string) int {
 
 func wordBounds(line string, lo, col int) (int, int) {
 	start := col
-	for start > lo && isWordByte(line[start-1]) {
+	// Equivalent: start counts down by one from col, which is never below lo.
+	for start > lo && isWordByte(line[start-1]) { //gooze:ignore comparison
 		start--
 	}
 
 	end := col
-	for end < len(line) && isWordByte(line[end]) {
+	// Equivalent: end counts up by one from col, which is never past len(line).
+	for end < len(line) && isWordByte(line[end]) { //gooze:ignore comparison
 		end++
 	}
 
@@ -728,7 +749,8 @@ func stripQuotes(s string) string {
 }
 
 func minInt(a, b int) int {
-	if a < b {
+	// Equivalent: when a == b, returning a or b is the same.
+	if a < b { //gooze:ignore comparison
 		return a
 	}
 
