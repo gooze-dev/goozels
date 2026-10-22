@@ -1,0 +1,4 @@
+version: 1
+
+paths:
+  exclude: ['^vendor/', '^mock_']   # regex patterns of files to skip
