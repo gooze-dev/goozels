@@ -101,10 +101,18 @@ func parseEntry(lineNum int, line string) (entry, bool) {
 
 // pathAtIndent replays entries (assumed to precede the target) maintaining a
 // nesting stack, then returns the key path of ancestors strictly less indented
-// than indent, plus the direct-child sibling keys already present at indent.
+// than indent, plus the sibling keys already present at indent under the same
+// parent: the entries after the last one less indented than indent.
 func pathAtIndent(entries []entry, indent int) (path []string, siblings map[string]bool) {
 	var stack []entry
-	for _, e := range entries {
+
+	parent := -1
+
+	for i, e := range entries {
+		if e.indent < indent {
+			parent = i
+		}
+
 		for len(stack) > 0 && stack[len(stack)-1].indent >= e.indent {
 			stack = stack[:len(stack)-1]
 		}
@@ -122,8 +130,10 @@ func pathAtIndent(entries []entry, indent int) (path []string, siblings map[stri
 
 	siblings = map[string]bool{}
 
-	for _, e := range entries {
-		if e.indent == indent {
+	for _, e := range entries[parent+1:] {
+		// Equivalent: no entry after parent is less indented than indent, so
+		// <= is ==.
+		if e.indent == indent { //gooze:ignore comparison
 			siblings[e.key] = true
 		}
 	}
