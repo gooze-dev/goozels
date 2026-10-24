@@ -453,3 +453,29 @@ func TestCompleteBareDash(t *testing.T) {
 		t.Errorf("a bare dash starts an item, got %v", labels(got))
 	}
 }
+
+func TestGooze140KeysAreKnown(t *testing.T) {
+	text := "run:\n  fail_fast: first\nthreshold:\n  max_survivors: 3\nreport:\n  format: sarif\nmutagen:\n  comparison:\n    enum_bounds: true\n"
+	if diags := newEditor().Diagnose(text); len(diags) != 0 {
+		t.Errorf("gooze v1.4.0 keys must be valid, got %+v", diags)
+	}
+
+	if got := labels(newEditor().Complete("run:\n  fail_fast: ", 1, len("  fail_fast: "))); strings.Join(got, ",") != "off,gate,file,first" {
+		t.Errorf("run.fail_fast values = %v, want off, gate, file, first", got)
+	}
+
+	diags := newEditor().Diagnose("threshold:\n  max_survivors: -1\n")
+	if len(diags) != 1 || diags[0].Message != `invalid value for "threshold.max_survivors": -1 is out of range: must be at least 0` {
+		t.Errorf("negative max_survivors: got %+v", diags)
+	}
+}
+
+func TestCompleteEnumValueOnlyAfterTheColon(t *testing.T) {
+	text := "log:\n  level: "
+	// Inside the key and right before its colon, the cursor is on the key.
+	for _, col := range []int{3, len("  level")} {
+		if got := labels(newEditor().Complete(text, 1, col)); slices.Contains(got, "debug") {
+			t.Errorf("Complete at column %d = %v, want no enum values", col, got)
+		}
+	}
+}
