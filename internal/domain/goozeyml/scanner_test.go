@@ -183,6 +183,8 @@ func TestParseEntryEdges(t *testing.T) {
 		{line: "x", ok: false},
 		{line: "#", ok: false},
 		{line: "-", ok: false},
+		{line: "# key: 1", ok: false},
+		{line: "- key: 1", ok: false},
 		{line: ": x", ok: false},
 		{line: "  : x", ok: false},
 		{line: "\t: x", ok: false},

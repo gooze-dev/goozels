@@ -119,8 +119,8 @@ func entryLines(e entry) []line {
 		diags = e.check.Edit
 	}
 
-	// Equivalent: only the slice's initial capacity changes.
-	lines := make([]line, 0, len(diags)+1) //gooze:ignore arithmetic,numbers
+	// Equivalent: *, / and % by 1, and +0, keep a capacity of at least len; -1 panics on empty input and is tested.
+	lines := make([]line, 0, len(diags)+1) //gooze:ignore arithmetic(*, /, %), numbers
 
 	survivors := map[model.Diagnostic]bool{}
 

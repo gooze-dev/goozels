@@ -165,9 +165,7 @@ func (ed Editor) Complete(text string, lineNum, col int) []model.CompletionItem 
 // "key:" line whose field is an enum. ok is false when it doesn't apply.
 func (ed Editor) valueCompletion(lines []string, lineNum int, line string, col int) ([]model.CompletionItem, bool) {
 	e, ok := parseEntry(lineNum, line)
-	// Equivalent: valueStart is keyEnd+1, so both bounds are the same check and
-	// each covers the other when it changes.
-	if !ok || col <= e.valueStart-1 || e.keyEnd >= col { //gooze:ignore comparison, logical
+	if !ok || col <= e.keyEnd {
 		return nil, false
 	}
 
@@ -280,7 +278,8 @@ func (ed Editor) Hover(text string, lineNum, col int) (model.Hover, bool) {
 // -1 when the text has no such colon.
 func separatorColon(text string) int {
 	for i := range len(text) {
-		if text[i] == ':' && (i+1 == len(text) || text[i+1] == ' ' || text[i+1] == '\t') {
+		rest := text[i+1:]
+		if text[i] == ':' && (len(rest) == 0 || rest[0] == ' ' || rest[0] == '\t') {
 			return i
 		}
 	}
@@ -477,8 +476,8 @@ func malformedLine(lineNum int, line string) (model.Diagnostic, bool) {
 
 // entryPath is the dotted key path of e under its enclosing mapping entries.
 func entryPath(stack []entry, e entry) []string {
-	// Equivalent: the capacity is only a hint; append grows the slice.
-	path := make([]string, 0, len(stack)+1) //gooze:ignore arithmetic, numbers
+	// Equivalent: *, / and % by 1, and +0, keep a capacity of at least len; -1 panics on empty input and is tested.
+	path := make([]string, 0, len(stack)+1) //gooze:ignore arithmetic(*, /, %), numbers
 	for _, s := range stack {
 		path = append(path, s.key)
 	}
