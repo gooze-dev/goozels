@@ -360,6 +360,10 @@ func (ed Editor) diagnoseEntry(lines []string, path []string, e entry) (model.Di
 
 	f, ok := ed.lookup(path)
 	if !ok {
+		if msg, deprecated := deprecatedKey(key); deprecated {
+			return model.Diagnostic{Range: keyRange(e), Severity: model.SeverityWarning, Message: msg, Source: source}, true
+		}
+
 		msg := "unknown gooze config key \"" + key + "\""
 		if s := ed.suggest(key); s != "" {
 			msg += "; did you mean \"" + s + "\"?"
@@ -527,6 +531,22 @@ func keyRange(e entry) model.Range {
 }
 
 // lookup resolves a key path to its field.
+// deprecatedKey returns the warning for a key gooze still accepts but no
+// longer documents: renamed keys point at their replacement, ignored ones ask
+// to be removed.
+func deprecatedKey(key string) (string, bool) {
+	replacement, ok := config.DeprecatedKeys()[key]
+	if !ok {
+		return "", false
+	}
+
+	if replacement == "" {
+		return "gooze ignores the config key \"" + key + "\"; remove it", true
+	}
+
+	return "deprecated gooze config key \"" + key + "\"; use \"" + replacement + "\"", true
+}
+
 func (ed Editor) lookup(path []string) (config.Field, bool) {
 	return ed.registry.Lookup(strings.Join(path, "."))
 }
