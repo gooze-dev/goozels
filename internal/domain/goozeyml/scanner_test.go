@@ -286,7 +286,7 @@ func TestCompleteKeysAfterNestingAndDedent(t *testing.T) {
 			name: "top level right after an empty section",
 			text: "run:\nno",
 			line: 1, col: 2,
-			want: []string{"no-cache", "no-update-check"},
+			want: []string{"no_cache", "no_update_check"},
 		},
 		{
 			name: "sibling already present is left out",
@@ -537,7 +537,7 @@ func TestInsertTextByKind(t *testing.T) {
 	tests := map[string]string{
 		"run":             "run:",
 		"output":          "output: ",
-		"no-cache":        "no-cache: ",
+		"no_cache":        "no_cache: ",
 		"run.parallel":    "parallel: ",
 		"run.mutagens":    "mutagens: ",
 		"log.level":       "level: ",

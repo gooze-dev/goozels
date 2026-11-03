@@ -78,7 +78,7 @@ func TestHoverDefaults(t *testing.T) {
 		want string
 	}{
 		{text: "output: x\n", want: "Default: `.gooze-reports`"},
-		{text: "no-cache: true\n", want: "Default: `false`"},
+		{text: "no_cache: true\n", want: "Default: `false`"},
 		{text: "paths:\n  exclude: []\n", want: "Default: `[]`"},
 	}
 	for _, tt := range tests {
@@ -181,7 +181,6 @@ paths:
 run:r
     mutation_timeout: 120
     parallel: 1
-version: 1
 `
 
 func TestDiagnoseMissingSpaceAfterColon(t *testing.T) {
@@ -238,7 +237,6 @@ func TestDiagnoseIntegerBounds(t *testing.T) {
 		yaml, want string
 		line       int
 	}{
-		{"version: 2\n", `invalid value for "version": 2 is out of range: must be 1`, 0},
 		{"run:\n  parallel: 0\n", `invalid value for "run.parallel": 0 is out of range: must be at least 1`, 1},
 		{"run:\n  mutation_timeout: 0\n", `invalid value for "run.mutation_timeout": 0 is out of range: must be at least 1`, 1},
 	}
@@ -249,7 +247,7 @@ func TestDiagnoseIntegerBounds(t *testing.T) {
 		}
 	}
 
-	if diags := newEditor().Diagnose("version: 1\nrun:\n  parallel: 8\n  mutation_timeout: 120\n"); len(diags) != 0 {
+	if diags := newEditor().Diagnose("run:\n  parallel: 8\n  mutation_timeout: 120\n"); len(diags) != 0 {
 		t.Errorf("in-range values should be accepted, got %+v", diags)
 	}
 }
@@ -286,7 +284,7 @@ func TestDiagnoseThresholds(t *testing.T) {
 }
 
 func TestNewerGoozeKeysAreKnown(t *testing.T) {
-	text := "no-update-check: true\nrun:\n  diff: origin/main\n  mutagens: [comparison]\n"
+	text := "no_update_check: true\nrun:\n  diff: origin/main\n  mutagens: [comparison]\n"
 	if diags := newEditor().Diagnose(text); len(diags) != 0 {
 		t.Errorf("keys of the gooze in use must be valid, got %+v", diags)
 	}
@@ -477,5 +475,37 @@ func TestCompleteEnumValueOnlyAfterTheColon(t *testing.T) {
 		if got := labels(newEditor().Complete(text, 1, col)); slices.Contains(got, "debug") {
 			t.Errorf("Complete at column %d = %v, want no enum values", col, got)
 		}
+	}
+}
+
+func TestDiagnoseDeprecatedKeys(t *testing.T) {
+	cases := map[string]struct {
+		text string
+		want string
+	}{
+		"renamed": {"no-cache: true\n", `deprecated gooze config key "no-cache"; use "no_cache"`},
+		"ignored": {"version: 1\n", `gooze ignores the config key "version"; remove it`},
+		"current": {"no_cache: true\n", ""},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			diags := newEditor().Diagnose(tc.text)
+			if tc.want == "" {
+				if len(diags) != 0 {
+					t.Fatalf("diags = %+v, want none", diags)
+				}
+
+				return
+			}
+
+			if len(diags) != 1 || diags[0].Message != tc.want || diags[0].Severity != model.SeverityWarning {
+				t.Fatalf("diags = %+v, want one warning %q", diags, tc.want)
+			}
+
+			if diags[0].Range != (model.Range{Start: model.Position{Line: 0, Column: 0}, End: model.Position{Line: 0, Column: len(strings.SplitN(tc.text, ":", 2)[0])}}) {
+				t.Errorf("range = %+v, want the key", diags[0].Range)
+			}
+		})
 	}
 }
