@@ -1,4 +1,15 @@
-# goozels
+# [goozels](https://gooze.dev/docs/editor-support/)
+
+[![Website](https://img.shields.io/badge/website-gooze.dev-7DBC23)](https://gooze.dev)
+[![Docs](https://img.shields.io/badge/docs-gooze.dev%2Fdocs-4CB8B8)](https://gooze.dev/docs)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/gooze-dev/goozels/badge)](https://scorecard.dev/viewer/?uri=github.com/gooze-dev/goozels)
+[![codecov](https://codecov.io/gh/gooze-dev/goozels/graph/badge.svg)](https://app.codecov.io/gh/gooze-dev/goozels)
+[![Go Report Card](https://goreportcard.com/badge/github.com/gooze-dev/goozels)](https://goreportcard.com/report/github.com/gooze-dev/goozels)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=gooze-dev_goozels&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=gooze-dev_goozels)
+[![DeepSource](https://app.deepsource.com/gh/gooze-dev/goozels.svg/?label=active+issues&show_trend=true)](https://app.deepsource.com/gh/gooze-dev/goozels/)
+[![CodeFactor](https://www.codefactor.io/repository/github/gooze-dev/goozels/badge)](https://www.codefactor.io/repository/github/gooze-dev/goozels)
+[![Known Vulnerabilities](https://snyk.io/test/github/gooze-dev/goozels/badge.svg)](https://snyk.io/test/github/gooze-dev/goozels)
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fgooze-dev%2Fgoozels.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Fgooze-dev%2Fgoozels?ref=badge_shield)
 
 Editor support for [**gooze**](https://github.com/gooze-dev/gooze), the Go
 mutation-testing tool. goozels adds autocompletion, hovers, live error-checking,
@@ -10,7 +21,7 @@ keep **all** your normal Go features and simply get gooze ones on top.
 
 ---
 
-## What you get
+## [What you get](https://gooze.dev/docs/editor-support/#features)
 
 **In your `.go` files**
 
@@ -58,7 +69,7 @@ An empty `//gooze:ignore` skips them all.
 
 ---
 
-## Requirements
+## [Requirements](https://gooze.dev/docs/editor-support/#requirements)
 
 - **Go** (to install goozels) — <https://go.dev/dl/>
 - **gopls** — the Go language server: `go install golang.org/x/tools/gopls@latest`
@@ -67,7 +78,7 @@ An empty `//gooze:ignore` skips them all.
 
 goozels finds `gopls` and `gooze` on your `PATH` automatically.
 
-## Install
+## [Install](https://gooze.dev/docs/editor-support/#install)
 
 ```bash
 go install gooze.dev/pkg/goozels/cmd/goozels@latest
@@ -88,7 +99,7 @@ version, as editors expect from the binary they start as gopls). Run with no
 arguments, goozels is a language server waiting on stdin; in a terminal it
 says so on stderr.
 
-## Set up your editor
+## [Set up your editor](https://gooze.dev/docs/editor-support/#vscode)
 
 Pick your editor — each guide is a couple of lines of config:
 
@@ -137,7 +148,7 @@ answer comes from a cache refreshed in the background from the Go module proxy
 at most once a day. Nothing waits for the network, so being offline has no
 effect. Agent hooks never check.
 
-### Check files from the command line
+### [Check files from the command line](https://gooze.dev/docs/editor-support/#command-line)
 
 `goozels check` prints the same gooze diagnostics without an editor, one per line
 in the usual `file:line:column: severity: message` form, survivors in line
@@ -178,7 +189,7 @@ gooze.yaml:3:3: warning: unknown gooze config key "run.paralel"; did you mean "r
 
 `goozels hook claude|codex` wraps the same check for the agent hooks below.
 
-## Use with AI coding agents
+## [Use with AI coding agents](https://gooze.dev/docs/editor-support/#ai-agents)
 
 goozels gives a coding agent the same gooze feedback you get in your editor,
 right after it edits a file:
@@ -211,7 +222,7 @@ keeps its normal Go tooling, and a post-edit hook adds gooze's view on top.
 All three need `goozels` on the `PATH` of the shell you start the agent from, and
 `gooze` if the agent should run mutation tests itself.
 
-### Claude Code
+### [Claude Code](https://gooze.dev/docs/claude-code/)
 
 Install the `gooze` plugin from its marketplace, in a Claude Code session:
 
@@ -267,7 +278,7 @@ to `CLAUDE.md` if you use Claude Code without the plugin — the plugin's
 `/gooze:mutation-testing` skill already covers it:
 
 ```markdown
-## Mutation testing (gooze)
+## [Mutation testing (gooze)](https://gooze.dev/docs/)
 - After adding or changing tests, rerun `gooze run <pkg>` for the package you touched.
 - Treat gooze diagnostics (mutation score, surviving mutants) as targets: add tests
   that kill those mutants. Don't change production code just to raise the score.
@@ -303,7 +314,7 @@ to `CLAUDE.md` if you use Claude Code without the plugin — the plugin's
   ran it, so goozels hides markers that could point at the wrong line. Rerun the
   command it gives.
 
-## Troubleshooting
+## [Troubleshooting](https://gooze.dev/docs/troubleshooting/)
 
 - **No Go features at all** — goozels couldn't start `gopls`. Make sure `gopls` is
   installed and on your `PATH`, or set `GOOZELS_GOPLS` to its full path.
