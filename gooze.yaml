@@ -3,6 +3,10 @@ version: 1
 paths:
   exclude: ['^vendor/', '^mock_']   # regex patterns of files to skip
 
+run:
+  mutation_memory: 1024             # MiB of memory the tests of one mutant may hold
+  mutation_disk: 1024               # MiB of temp and build files the tests of one mutant may write
+
 threshold:
   diff:
     total: 100                      # every mutant on a pull request's changed lines must be killed
