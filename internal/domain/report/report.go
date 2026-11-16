@@ -28,6 +28,9 @@ type Current struct {
 	// TimeoutsKilled counts timed-out mutants as killed in the score, as
 	// gooze does under threshold.timeouts: killed.
 	TimeoutsKilled bool
+	// Stopped is the record of the last run when it stopped before it tested
+	// every mutant (gooze's _partial.json); the zero value is a complete run.
+	Stopped rpt.Partial
 }
 
 // Results is what gooze's reports say about one Go file.
@@ -82,18 +85,19 @@ func headDiagnostic(rep []rpt.Report, workdir, absPath string, cur Current) mode
 		d.Message = staleMessage(partial, "tests changed since the last run ("+filepath.Base(changed)+")", s, cur.Rerun)
 		d.Severity = model.SeverityWarning
 	case Fresh:
+		d.Message += stoppedNote(cur.Stopped)
 		if isPartial {
-			d.Message = partialMessage(partial, s, cur.Rerun)
+			d.Message = partialMessage(partial, s, stoppedNote(cur.Stopped), cur.Rerun)
 		}
 	}
 
 	return d
 }
 
-// partialMessage is the summary of a partly tested file, with the command
-// that tests all of it.
-func partialMessage(partial string, s rpt.Summary, rerun string) string {
-	msg := "gooze: " + partial + " — " + ScoreText(s)
+// partialMessage is the summary of a partly tested file, with the stopped
+// note of a run that ended early and the command that tests all of it.
+func partialMessage(partial string, s rpt.Summary, stopped, rerun string) string {
+	msg := "gooze: " + partial + " — " + ScoreText(s) + stopped
 	if rerun != "" {
 		msg += "; rerun the whole file: " + rerun
 	}

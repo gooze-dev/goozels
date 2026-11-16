@@ -2,6 +2,7 @@ package controller
 
 import (
 	"cmp"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"slices"
@@ -118,7 +119,7 @@ func (c Checker) SourcesForTest(workdir, absPath string) []string {
 // results returns what the reports of workdir say about a .go file, or nil
 // when none is about it.
 func (c Checker) results(all []goozereport.Report, workdir, absPath, text, rerun string) *report.Results {
-	cur := report.Current{Text: text, Rerun: rerun, TimeoutsKilled: c.timeoutsKilled(workdir)}
+	cur := report.Current{Text: text, Rerun: rerun, TimeoutsKilled: c.timeoutsKilled(workdir), Stopped: c.stopped(workdir)}
 
 	if c.Files != nil {
 		cur.Tests = map[string]string{}
@@ -188,4 +189,22 @@ func (c Checker) summarize(reports []goozereport.Report, workdir string) goozere
 	s.TimeoutsKilled = c.timeoutsKilled(workdir)
 
 	return s
+}
+
+// stopped returns gooze's record of the last run in workdir when it stopped
+// before it tested every mutant, and the zero value otherwise: the record is
+// only there after such a run.
+func (c Checker) stopped(workdir string) goozereport.Partial {
+	var partial goozereport.Partial
+
+	if c.Files == nil {
+		return partial
+	}
+
+	data, err := c.Files.ReadFile(filepath.Join(workdir, config.DefaultReportsDir, goozereport.PartialFileName))
+	if err != nil || json.Unmarshal(data, &partial) != nil {
+		return goozereport.Partial{}
+	}
+
+	return partial
 }
