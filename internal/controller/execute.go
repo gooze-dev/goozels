@@ -234,7 +234,7 @@ func (s *Server) score(pattern string) string {
 		return ""
 	}
 
-	return report.ScoreText(report.Summarize(matched))
+	return report.ScoreText(s.checker.summarize(matched, workdir))
 }
 
 // capLog shortens command output to maxLogBytes, cut at a line end, and says

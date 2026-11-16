@@ -2,6 +2,7 @@ package controller
 
 import (
 	"cmp"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -117,7 +118,7 @@ func (c Checker) SourcesForTest(workdir, absPath string) []string {
 // results returns what the reports of workdir say about a .go file, or nil
 // when none is about it.
 func (c Checker) results(all []goozereport.Report, workdir, absPath, text, rerun string) *report.Results {
-	cur := report.Current{Text: text, Rerun: rerun}
+	cur := report.Current{Text: text, Rerun: rerun, TimeoutsKilled: c.timeoutsKilled(workdir)}
 
 	if c.Files != nil {
 		cur.Tests = map[string]string{}
@@ -150,4 +151,41 @@ func (c Checker) rerun(workdir, pattern string) string {
 	}
 
 	return "cd " + dir + " && " + line
+}
+
+// timeoutsEnv is the environment variable that sets threshold.timeouts for
+// gooze; it wins over gooze.yaml.
+const timeoutsEnv = "GOOZE_THRESHOLD_TIMEOUTS"
+
+// timeoutsKilled reports whether gooze counts timed-out mutants as killed in
+// workdir (threshold.timeouts: killed), from the environment or else from
+// gooze.yaml there, so scores read as gooze prints them.
+func (c Checker) timeoutsKilled(workdir string) bool {
+	const killed = "killed"
+
+	if policy := os.Getenv(timeoutsEnv); policy != "" {
+		return policy == killed
+	}
+
+	if c.Files == nil {
+		return false
+	}
+
+	data, err := c.Files.ReadFile(filepath.Join(workdir, config.FileName))
+	if err != nil {
+		return false
+	}
+
+	policy, _ := goozeyml.Value(string(data), config.KeyThresholdTimeouts)
+
+	return policy == killed
+}
+
+// summarize counts the results of reports, scored as gooze scores them in
+// workdir.
+func (c Checker) summarize(reports []goozereport.Report, workdir string) goozereport.Summary {
+	s := report.Summarize(reports)
+	s.TimeoutsKilled = c.timeoutsKilled(workdir)
+
+	return s
 }
