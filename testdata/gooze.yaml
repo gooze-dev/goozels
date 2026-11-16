@@ -7,6 +7,8 @@ paths:
 run:
   parallel: 4
   mutation_timeout: 120
+  mutation_memory: 1024
+  mutation_disk: 1024
 log:
   level: info
   verbose: false

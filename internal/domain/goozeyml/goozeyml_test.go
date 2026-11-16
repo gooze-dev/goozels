@@ -509,3 +509,39 @@ func TestDiagnoseDeprecatedKeys(t *testing.T) {
 		})
 	}
 }
+
+func TestMutationLimits(t *testing.T) {
+	for _, key := range []string{"mutation_memory", "mutation_disk"} {
+		items := newEditor().Complete("run:\n  mutation_", 1, 11)
+		if !slices.ContainsFunc(items, func(it model.CompletionItem) bool { return it.Label == key }) {
+			t.Errorf("run. completion lacks %s: %+v", key, items)
+		}
+
+		text := "run:\n  " + key + ": -1\n"
+		want := `invalid value for "run.` + key + `": -1 is out of range: must be at least 0`
+
+		if diags := newEditor().Diagnose(text); len(diags) != 1 || diags[0].Message != want || diags[0].Severity != model.SeverityError {
+			t.Errorf("Diagnose(%q) = %+v, want one error %q", text, diags, want)
+		}
+
+		for _, value := range []string{"0", "1024"} {
+			if diags := newEditor().Diagnose("run:\n  " + key + ": " + value + "\n"); len(diags) != 0 {
+				t.Errorf("%s: %s should be accepted, got %+v", key, value, diags)
+			}
+		}
+	}
+}
+
+func TestHoverConfigInitValue(t *testing.T) {
+	for _, key := range []string{"mutation_memory", "mutation_disk"} {
+		h, ok := newEditor().Hover("run:\n  "+key+": 0\n", 1, 4)
+		if !ok || !strings.HasSuffix(h.Markdown, "\n\nDefault: `0`\n\n`gooze config init` writes `1024`") {
+			t.Errorf("hover on run.%s = %q, want the default, then the value config init writes", key, h.Markdown)
+		}
+	}
+
+	h, ok := newEditor().Hover("run:\n  parallel: 4\n", 1, 4)
+	if !ok || !strings.HasSuffix(h.Markdown, "Default: `1`") {
+		t.Errorf("hover on run.parallel = %q, want it to end with the default", h.Markdown)
+	}
+}

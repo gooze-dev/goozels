@@ -263,6 +263,10 @@ func (ed Editor) Hover(text string, lineNum, col int) (model.Hover, bool) {
 		md += "\n\nDefault: `" + def + "`"
 	}
 
+	if written := defaultText(f.Init); written != "" {
+		md += "\n\n`gooze config init` writes `" + written + "`"
+	}
+
 	return model.Hover{
 		Markdown: md,
 		Range: model.Range{
