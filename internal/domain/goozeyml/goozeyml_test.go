@@ -545,3 +545,42 @@ func TestHoverConfigInitValue(t *testing.T) {
 		t.Errorf("hover on run.parallel = %q, want it to end with the default", h.Markdown)
 	}
 }
+
+func TestValue(t *testing.T) {
+	const text = `# gooze config
+run:
+  parallel: 4
+  timeouts: nested elsewhere
+threshold:
+  total: 80
+  diff:
+    total: 100
+  timeouts: "killed" # hangs count
+output: '.reports'
+empty:
+`
+
+	for key, want := range map[string]string{
+		"threshold.timeouts":   "killed",
+		"threshold.total":      "80",
+		"threshold.diff.total": "100",
+		"run.parallel":         "4",
+		"run.timeouts":         "nested elsewhere",
+		"output":               ".reports",
+		"empty":                "",
+	} {
+		if got, ok := Value(text, key); !ok || got != want {
+			t.Errorf("Value(%q) = %q, %v, want %q", key, got, ok, want)
+		}
+	}
+
+	for _, key := range []string{"timeouts", "threshold.missing", "diff.total", "run.total", ""} {
+		if got, ok := Value(text, key); ok {
+			t.Errorf("Value(%q) = %q, want unset", key, got)
+		}
+	}
+
+	if got, ok := Value("", "threshold.timeouts"); ok || got != "" {
+		t.Errorf("an empty file sets nothing, got %q", got)
+	}
+}

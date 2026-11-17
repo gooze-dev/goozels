@@ -233,3 +233,36 @@ func diagnostics(reports []rpt.Report, workdir, absPath string, cur Current) []m
 
 	return results.All()
 }
+
+// timedOutCalc is calc.go's report with a killed and a timed-out mutant.
+func timedOutCalc() rpt.Report {
+	r := calcReport()
+	r.Result[0].Mutations = []rpt.MutationResult{{MutationID: "k", Status: rpt.Killed}, {MutationID: "t", Status: rpt.Timeout}}
+
+	return r
+}
+
+func TestSummaryCountsTimeoutsAsKilledWhenGoozeDoes(t *testing.T) {
+	killed := freshCalc
+	killed.TimeoutsKilled = true
+
+	if got, want := summary(t, freshCalc, timedOutCalc()), "gooze: score 50.00% — 1 killed, 1 timed out"; got != want {
+		t.Errorf("by default a timeout is not a kill:\n got %q\nwant %q", got, want)
+	}
+
+	if got, want := summary(t, killed, timedOutCalc()), "gooze: score 100.00% — 1 killed, 1 timed out"; got != want {
+		t.Errorf("with timeouts killed:\n got %q\nwant %q", got, want)
+	}
+
+	partial := "gooze: partly tested (functions matching ^f$) — score 100.00% — 1 killed, 1 timed out; rerun the whole file: gooze run ."
+	if got := summary(t, killed, withScope(timedOutCalc(), &rpt.Scope{Run: "^f$"})); got != partial {
+		t.Errorf("partly tested:\n got %q\nwant %q", got, partial)
+	}
+
+	stale := killed
+	stale.Text += "// edit\n"
+
+	if got, want := summary(t, stale, timedOutCalc()), "gooze: results are from before calc.go changed; score then 100.00%; rerun: gooze run ."; got != want {
+		t.Errorf("stale:\n got %q\nwant %q", got, want)
+	}
+}

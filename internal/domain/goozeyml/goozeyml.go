@@ -99,6 +99,43 @@ func parseEntry(lineNum int, line string) (entry, bool) {
 	}, true
 }
 
+// Value returns the scalar the config file text sets for key, a dotted path
+// such as "threshold.timeouts", without its quotes, and false when the file
+// doesn't set it.
+func Value(text, key string) (string, bool) {
+	var stack []entry
+
+	for _, e := range parseEntries(strings.Split(text, "\n")) {
+		stack = append(dropDeeper(stack, e.indent), e)
+
+		if strings.Join(keysOf(stack), ".") == key {
+			return stripQuotes(e.value), true
+		}
+	}
+
+	return "", false
+}
+
+// dropDeeper returns stack without its entries indented as far as indent or
+// further: the ancestors of an entry at indent.
+func dropDeeper(stack []entry, indent int) []entry {
+	for len(stack) > 0 && stack[len(stack)-1].indent >= indent {
+		stack = stack[:len(stack)-1]
+	}
+
+	return stack
+}
+
+// keysOf returns the keys of entries.
+func keysOf(entries []entry) []string {
+	keys := make([]string, 0, len(entries))
+	for _, e := range entries {
+		keys = append(keys, e.key)
+	}
+
+	return keys
+}
+
 // pathAtIndent replays entries (assumed to precede the target) maintaining a
 // nesting stack, then returns the key path of ancestors strictly less indented
 // than indent, plus the sibling keys already present at indent under the same

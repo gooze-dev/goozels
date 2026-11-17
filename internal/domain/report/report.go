@@ -25,6 +25,9 @@ type Current struct {
 	Tests map[string]string
 	// Rerun is the command that refreshes the results, e.g. "gooze run ./calc".
 	Rerun string
+	// TimeoutsKilled counts timed-out mutants as killed in the score, as
+	// gooze does under threshold.timeouts: killed.
+	TimeoutsKilled bool
 }
 
 // Results is what gooze's reports say about one Go file.
@@ -65,19 +68,22 @@ func FileResults(reports []rpt.Report, workdir, absPath string, cur Current) (Re
 // tests changed since the run. Either says when the reports cover only part of
 // the file, so a narrowed run's score is not read as the whole file's.
 func headDiagnostic(rep []rpt.Report, workdir, absPath string, cur Current) model.Diagnostic {
-	d := SummaryDiagnostic(rep)
+	s := Summarize(rep)
+	s.TimeoutsKilled = cur.TimeoutsKilled
+
+	d := summaryDiagnostic(s)
 	partial, isPartial := partlyTested(rep)
 
 	switch state, changed := freshness(rep, workdir, absPath, cur); state {
 	case SourceChanged:
-		d.Message = staleMessage(partial, "results are from before "+filepath.Base(absPath)+" changed", rep, cur.Rerun)
+		d.Message = staleMessage(partial, "results are from before "+filepath.Base(absPath)+" changed", s, cur.Rerun)
 		d.Severity = model.SeverityWarning
 	case TestChanged:
-		d.Message = staleMessage(partial, "tests changed since the last run ("+filepath.Base(changed)+")", rep, cur.Rerun)
+		d.Message = staleMessage(partial, "tests changed since the last run ("+filepath.Base(changed)+")", s, cur.Rerun)
 		d.Severity = model.SeverityWarning
 	case Fresh:
 		if isPartial {
-			d.Message = partialMessage(partial, rep, cur.Rerun)
+			d.Message = partialMessage(partial, s, cur.Rerun)
 		}
 	}
 
@@ -86,8 +92,8 @@ func headDiagnostic(rep []rpt.Report, workdir, absPath string, cur Current) mode
 
 // partialMessage is the summary of a partly tested file, with the command
 // that tests all of it.
-func partialMessage(partial string, rep []rpt.Report, rerun string) string {
-	msg := "gooze: " + partial + " — " + ScoreText(Summarize(rep))
+func partialMessage(partial string, s rpt.Summary, rerun string) string {
+	msg := "gooze: " + partial + " — " + ScoreText(s)
 	if rerun != "" {
 		msg += "; rerun the whole file: " + rerun
 	}
@@ -97,12 +103,12 @@ func partialMessage(partial string, rep []rpt.Report, rerun string) string {
 
 // staleMessage says why results may be out of date, the score they gave and
 // how to refresh them, after partial's label when the file is partly tested.
-func staleMessage(partial, why string, rep []rpt.Report, rerun string) string {
+func staleMessage(partial, why string, s rpt.Summary, rerun string) string {
 	if partial != "" {
 		why = partial + "; " + why
 	}
 
-	msg := "gooze: " + why + "; score then " + percent(Summarize(rep))
+	msg := "gooze: " + why + "; score then " + percent(s)
 	if rerun != "" {
 		msg += "; rerun: " + rerun
 	}
@@ -243,10 +249,15 @@ func percent(s rpt.Summary) string {
 // Its severity is a warning when any mutant survived or was not covered,
 // otherwise informational.
 func SummaryDiagnostic(reports []rpt.Report) model.Diagnostic {
-	s := Summarize(reports)
+	return summaryDiagnostic(Summarize(reports))
+}
+
+// summaryDiagnostic is SummaryDiagnostic for counts already summed.
+func summaryDiagnostic(s rpt.Summary) model.Diagnostic {
 	severity := model.SeverityInfo
 
-	if s.Survived+s.NotCovered > 0 {
+	// Equivalent: counts are never negative, so != 0 is > 0.
+	if s.Survived+s.NotCovered > 0 { //gooze:ignore comparison
 		severity = model.SeverityWarning
 	}
 

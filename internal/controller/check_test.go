@@ -9,6 +9,8 @@ import (
 
 	"gooze.dev/pkg/gooze/pkg/config"
 	goozereport "gooze.dev/pkg/gooze/pkg/report"
+
+	"gooze.dev/pkg/goozels/internal/domain/report"
 )
 
 // fakeReports serves canned reports for any directory.
@@ -130,5 +132,54 @@ func TestCheckerPackageTested(t *testing.T) {
 	}
 	if fc := c.Check("/w", "/w/other/y.go", "package other\n"); fc.PackageTested {
 		t.Errorf("a file of an untested package: %+v", fc)
+	}
+}
+
+func TestCheckerScoresTimeoutsAsGoozeDoes(t *testing.T) {
+	origin := &goozereport.File{ShortPath: "x.go", FullPath: "/w/x.go"}
+	rep := goozereport.Report{
+		Source: goozereport.Source{Origin: origin},
+		Result: []goozereport.Result{{Name: "arithmetic", Mutations: []goozereport.MutationResult{
+			{MutationID: "k", Status: goozereport.Killed}, {MutationID: "t", Status: goozereport.Timeout},
+		}}},
+	}
+	reports := fakeReports{reports: []goozereport.Report{rep}}
+
+	const (
+		half = "gooze: score 50.00% — 1 killed, 1 timed out"
+		full = "gooze: score 100.00% — 1 killed, 1 timed out"
+	)
+
+	for name, tc := range map[string]struct {
+		files FileReader
+		env   string
+		want  string
+	}{
+		"no config file":        {files: fakeFiles{}, want: half},
+		"no file reader":        {want: half},
+		"default":               {files: fakeFiles{"/w/gooze.yaml": "threshold:\n  total: 80\n"}, want: half},
+		"survived":              {files: fakeFiles{"/w/gooze.yaml": "threshold:\n  timeouts: survived\n"}, want: half},
+		"killed":                {files: fakeFiles{"/w/gooze.yaml": "threshold:\n  timeouts: killed\n"}, want: full},
+		"another project":       {files: fakeFiles{"/other/gooze.yaml": "threshold:\n  timeouts: killed\n"}, want: half},
+		"env":                   {files: fakeFiles{}, env: "killed", want: full},
+		"env without a reader":  {env: "killed", want: full},
+		"env wins over file":    {files: fakeFiles{"/w/gooze.yaml": "threshold:\n  timeouts: killed\n"}, env: "survived", want: half},
+		"env killed over file":  {files: fakeFiles{"/w/gooze.yaml": "threshold:\n  timeouts: survived\n"}, env: "killed", want: full},
+		"env of another policy": {files: fakeFiles{}, env: "ignored", want: half},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("GOOZE_THRESHOLD_TIMEOUTS", tc.env)
+
+			c := Checker{Reports: reports, Config: config.NewRegistry(), Files: tc.files}
+
+			fc := c.Check("/w", "/w/x.go", "package x\n")
+			if fc.Results == nil || fc.Results.Summary.Message != tc.want {
+				t.Errorf("file summary = %+v, want %q", fc.Results, tc.want)
+			}
+
+			if got := report.ScoreText(c.summarize(reports.reports, "/w")); "gooze: "+got != tc.want {
+				t.Errorf("summarize = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }

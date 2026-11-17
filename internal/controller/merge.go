@@ -35,7 +35,7 @@ func (s *Server) offerMerge(args []string) {
 		return
 	}
 
-	msg := "gooze: function run done — " + report.ScoreText(report.Summarize(reports)) +
+	msg := "gooze: function run done — " + report.ScoreText(s.checker.summarize(reports, s.getWorkdir())) +
 		". Its reports are in " + filepath.ToSlash(runDir) + " until you merge them into the main reports."
 
 	s.requestClient("window/showMessageRequest", lsp.ShowMessageRequestParams{
