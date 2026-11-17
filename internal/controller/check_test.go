@@ -183,3 +183,32 @@ func TestCheckerScoresTimeoutsAsGoozeDoes(t *testing.T) {
 		})
 	}
 }
+
+func TestCheckerSaysWhenTheRunStoppedEarly(t *testing.T) {
+	rep := goozereport.Report{
+		Source: goozereport.Source{Origin: &goozereport.File{ShortPath: "x.go", FullPath: "/w/x.go"}},
+		Result: []goozereport.Result{{Name: "arithmetic", Mutations: []goozereport.MutationResult{{MutationID: "k", Status: goozereport.Killed}}}},
+	}
+
+	const score = "gooze: score 100.00% — 1 killed"
+
+	for name, tc := range map[string]struct {
+		files FileReader
+		want  string
+	}{
+		"complete run":    {files: fakeFiles{}, want: score},
+		"no file reader":  {want: score},
+		"stopped early":   {files: fakeFiles{"/w/.gooze-reports/_partial.json": `{"fail_fast":"first","tested":15,"planned":19}`}, want: score + "; the run stopped early by fail-fast first after 15 of 19"},
+		"another project": {files: fakeFiles{"/other/.gooze-reports/_partial.json": `{"fail_fast":"first","tested":15,"planned":19}`}, want: score},
+		"unreadable":      {files: fakeFiles{"/w/.gooze-reports/_partial.json": `{"fail_fast":`}, want: score},
+	} {
+		t.Run(name, func(t *testing.T) {
+			c := Checker{Reports: fakeReports{reports: []goozereport.Report{rep}}, Config: config.NewRegistry(), Files: tc.files}
+
+			fc := c.Check("/w", "/w/x.go", "package x\n")
+			if fc.Results == nil || fc.Results.Summary.Message != tc.want {
+				t.Errorf("file summary = %+v, want %q", fc.Results, tc.want)
+			}
+		})
+	}
+}

@@ -98,3 +98,45 @@ func TestStaleSummaryOfAPartlyTestedFile(t *testing.T) {
 		t.Errorf("got %q\nwant %q", got, want)
 	}
 }
+
+func TestSummarySaysWhenTheRunStoppedEarly(t *testing.T) {
+	with := func(cur Current, p rpt.Partial) Current {
+		cur.Stopped = p
+		return cur
+	}
+
+	failFast := rpt.Partial{FailFast: "first", Tested: 15, Planned: 19}
+
+	cases := map[string]struct {
+		cur     Current
+		reports rpt.Report
+		want    string
+	}{
+		"complete run": {freshCalc, calcReport(),
+			"gooze: score 0.00% — 0 killed, 1 survived"},
+		"counts without a stop are a complete run": {with(freshCalc, rpt.Partial{Tested: 3, Planned: 9}), calcReport(),
+			"gooze: score 0.00% — 0 killed, 1 survived"},
+		"fail-fast first": {with(freshCalc, failFast), calcReport(),
+			"gooze: score 0.00% — 0 killed, 1 survived; the run stopped early by fail-fast first after 15 of 19"},
+		"fail-fast file": {with(freshCalc, rpt.Partial{FailFast: "file", Tested: 5, Planned: 19}), calcReport(),
+			"gooze: score 0.00% — 0 killed, 1 survived; the run's fail-fast file skipped 14 of 19"},
+		"interrupted": {with(freshCalc, rpt.Partial{Interrupted: true, FailFast: "first", Tested: 2, Planned: 7}), calcReport(),
+			"gooze: score 0.00% — 0 killed, 1 survived; the run was interrupted after 2 of 7"},
+		"partly tested": {with(freshCalc, failFast), withScope(calcReport(), &rpt.Scope{Run: "^f$"}),
+			"gooze: partly tested (functions matching ^f$) — score 0.00% — 0 killed, 1 survived; the run stopped early by fail-fast first after 15 of 19; rerun the whole file: gooze run ."},
+	}
+
+	for name, tc := range cases {
+		if got := summary(t, tc.cur, tc.reports); got != tc.want {
+			t.Errorf("%s:\n got %q\nwant %q", name, got, tc.want)
+		}
+	}
+
+	stale := with(freshCalc, failFast)
+	stale.Text += "// edit\n"
+
+	want := "gooze: results are from before calc.go changed; score then 0.00%; rerun: gooze run ."
+	if got := summary(t, stale, calcReport()); got != want {
+		t.Errorf("stale results already ask for a rerun:\n got %q\nwant %q", got, want)
+	}
+}

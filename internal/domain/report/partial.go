@@ -2,6 +2,7 @@ package report
 
 import (
 	"slices"
+	"strconv"
 	"strings"
 
 	rpt "gooze.dev/pkg/gooze/pkg/report"
@@ -56,4 +57,24 @@ func describeScope(s rpt.Scope) string {
 	}
 
 	return strings.Join(parts, "; ")
+}
+
+// failFastFile is the fail-fast policy that skips the rest of a file after
+// its first survivor, where the run itself goes on.
+const failFastFile = "file"
+
+// stoppedNote says, for a summary, that the last run stopped before it tested
+// every mutant, in gooze's own words: the file may have mutants the run never
+// reached. It is empty for a complete run.
+func stoppedNote(p rpt.Partial) string {
+	switch {
+	case p.Interrupted:
+		return "; the run was interrupted after " + strconv.Itoa(p.Tested) + " of " + strconv.Itoa(p.Planned)
+	case p.FailFast == failFastFile:
+		return "; the run's fail-fast " + p.FailFast + " skipped " + strconv.Itoa(p.Planned-p.Tested) + " of " + strconv.Itoa(p.Planned)
+	case p.FailFast != "":
+		return "; the run stopped early by fail-fast " + p.FailFast + " after " + strconv.Itoa(p.Tested) + " of " + strconv.Itoa(p.Planned)
+	default:
+		return ""
+	}
 }
